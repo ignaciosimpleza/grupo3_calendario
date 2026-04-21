@@ -187,7 +187,7 @@
       <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
       <span>Empresas</span>
     </div>
-    <div class="nav-item px-6 py-3 flex items-center gap-3" onclick="navigateTo('configuracion')">
+    <div id="nav-configuracion" class="nav-item hidden px-6 py-3 flex items-center gap-3" onclick="navigateTo('configuracion')">
       <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
       <span>Configuración</span>
     </div>
@@ -491,8 +491,8 @@
 <script>
   // ======= SUPABASE CONFIG =======
   // Reemplazar con tus credenciales de Supabase:
-const SUPABASE_URL      = 'https://tfjezjmgulvolrifpjh.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmamV6am1ndWx2b2xyaWZqcGpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3OTMxNTMsImV4cCI6MjA5MjM2OTE1M30.kM6TpNuErxItzT-oZDNF95C1UsELWDORFEWIKPAv_N0';
+  const SUPABASE_URL      = 'PEGAR_TU_URL_AQUI';
+  const SUPABASE_ANON_KEY = 'PEGAR_TU_ANON_KEY_AQUI';
   const EDIT_PASSWORD     = 'A1234b';
 
   const _dbConfigured = SUPABASE_URL !== 'PEGAR_TU_URL_AQUI';
@@ -684,11 +684,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     document.getElementById('header-actions').classList.toggle('hidden', !isEditing);
     document.getElementById('add-company-bar').classList.toggle('hidden', !isEditing);
     document.getElementById('th-fix').classList.toggle('hidden', !isEditing);
+    document.getElementById('nav-configuracion').classList.toggle('hidden', !isEditing);
 
-    const notice = document.getElementById('config-readonly-notice');
-    const form   = document.getElementById('config-form-wrap');
-    if (notice) notice.classList.toggle('hidden', isEditing);
-    if (form) form.classList.toggle('config-readonly', !isEditing);
+    if (!isEditing && state.currentTab === 'configuracion') navigateTo('calendario');
   }
 
   // ======= MONTH DROPDOWN =======
