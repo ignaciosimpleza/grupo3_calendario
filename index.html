@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Gestión de Calendario - Simpleza</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  body { font-family: 'Sora', sans-serif; background-color: #F9F4ED; color: #1A1D1E; }
+
+  :root {
+    --sidebar-width: 260px;
+    --accent: #32E8A9;
+    --border: #E2DDD8;
+  }
+
+  #app { display: flex; height: 100vh; overflow: hidden; }
+  #sidebar { width: var(--sidebar-width); background: #151818; flex-shrink: 0; color: white; display: flex; flex-direction: column; }
+  #main-content { flex-grow: 1; overflow-y: auto; position: relative; }
+  .nav-item { cursor: pointer; transition: all 0.2s; border-left: 4px solid transparent; }
+  .nav-item:hover { background: #1f2424; color: var(--accent); }
+  .nav-item.active { background: #253030; border-left-color: var(--accent); color: var(--accent); }
+
+  /* Table */
+  .sticky-header th { position: sticky; top: 0; background: #F3EDE5; z-index: 10; border-bottom: 2px solid var(--border); }
+  .row-fixed { background-color: #E8FDF5 !important; }
+  .chip { border-radius: 20px; padding: 4px 12px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items:center; gap: 6px; white-space: nowrap; }
+  .drag-over { outline: 2px dashed var(--accent) !important; }
+
+  /* Company Cards */
+  .company-card {
+    background: white; border-radius: 16px; border: 1px solid var(--border);
+    overflow: hidden; transition: box-shadow 0.2s, transform 0.2s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .company-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.09); transform: translateY(-2px); }
+  .company-card .card-stripe { height: 6px; }
+  .company-card .card-header { padding: 18px 20px 12px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .company-card .avatar {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem; font-weight: 800; color: white; flex-shrink: 0;
+    letter-spacing: -0.5px; text-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  }
+  .company-card .card-body { padding: 0 20px 16px; }
+  .company-card .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .company-card .stat-box { background: #F9F4ED; border-radius: 10px; padding: 10px 12px; }
+  .company-card .stat-box .label { font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #7F8C8C; margin-bottom: 3px; }
+  .company-card .stat-box .value { font-size: 0.82rem; font-weight: 700; color: #1A1D1E; }
+  .company-card .stat-box .sub { font-size: 0.63rem; color: #7F8C8C; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .company-card .cadence-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+  .company-card .cadence-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+  .company-card .card-footer {
+    padding: 10px 20px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: #FDFAF7;
+  }
+  .company-card.inactive { opacity: 0.55; }
+
+  /* Month Dropdown */
+  .month-dropdown-wrapper { position: relative; }
+  .month-dropdown-trigger {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; background: white; font-size: 0.875rem;
+    min-width: 180px; user-select: none; transition: border-color 0.15s;
+  }
+  .month-dropdown-trigger:hover { border-color: var(--accent); }
+  .month-dropdown-trigger .badge {
+    background: var(--accent); color: #151818;
+    border-radius: 10px; padding: 0 6px; font-size: 0.65rem; font-weight: 700; line-height: 16px;
+  }
+  .month-dropdown-panel {
+    display: none; position: absolute; top: calc(100% + 6px); left: 0;
+    background: white; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1); z-index: 100; padding: 8px; min-width: 220px;
+  }
+  .month-dropdown-panel.open { display: block; }
+  .month-dropdown-panel .actions { display: flex; gap: 6px; padding: 4px 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  .month-dropdown-panel .actions button {
+    font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 6px;
+    border: 1px solid var(--border); cursor: pointer; background: transparent; color: #7F8C8C; transition: all 0.15s;
+  }
+  .month-dropdown-panel .actions button:hover { background: var(--accent); border-color: var(--accent); color: #151818; }
+  .month-dropdown-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+  .month-option {
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px 4px; border-radius: 6px; font-size: 0.75rem; font-weight: 600;
+    cursor: pointer; border: 1px solid transparent; transition: all 0.15s; color: #1A1D1E;
+  }
+  .month-option:hover { background: #F9F4ED; border-color: var(--border); }
+  .month-option.selected { background: #32E8A933; border-color: var(--accent); }
+  .month-option.selected::before { content: '✓ '; font-size: 0.6rem; }
+
+  /* Editable company name */
+  .company-name-input {
+    font-weight: 700; font-size: 1rem; color: #1A1D1E; line-height: 1.25;
+    border: none; background: transparent; outline: none; width: 100%;
+    border-bottom: 1.5px dashed transparent; transition: border-color 0.15s;
+    padding: 0; font-family: 'Sora', sans-serif;
+  }
+  .company-name-input:hover { border-bottom-color: #E2DDD8; }
+  .company-name-input:focus { border-bottom-color: #32E8A9; }
+
+  /* Reps */
+  .rep-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #F9F4ED; border: 1px solid #E2DDD8; border-radius: 20px;
+    padding: 2px 8px 2px 8px; font-size: 0.65rem; font-weight: 600; color: #1A1D1E;
+  }
+  .rep-tag button { color: #7F8C8C; line-height: 1; background: none; border: none; cursor: pointer; padding: 0; font-size: 0.75rem; }
+  .rep-tag button:hover { color: #CD6155; }
+
+  /* Company modal */
+  #company-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(21,24,24,0.55);
+    z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(2px);
+  }
+  #company-modal-overlay.open { display: flex; }
+  #company-modal {
+    background: white; border-radius: 20px; width: 520px; max-width: 95vw;
+    max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.18);
+  }
+  #company-modal .modal-header {
+    padding: 24px 24px 16px; display: flex; align-items: center; gap: 14px;
+    border-bottom: 1px solid #E2DDD8;
+  }
+  #company-modal .modal-body { padding: 20px 24px; overflow-y: auto; flex-grow: 1; }
+  #company-modal .modal-footer { padding: 14px 24px; border-top: 1px solid #E2DDD8; background: #FDFAF7; border-radius: 0 0 20px 20px; }
+  .meeting-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #F3EDE5; }
+  .meeting-row:last-child { border-bottom: none; }
+  .meeting-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .meeting-past { opacity: 0.5; }
+
+  /* Login modal */
+  #login-modal {
+    display: none; position: fixed; inset: 0; background: rgba(21,24,24,0.6);
+    z-index: 300; align-items: center; justify-content: center; backdrop-filter: blur(3px);
+  }
+  #login-modal.open { display: flex; }
+
+  /* Loading overlay */
+  #loading-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(249,244,237,0.85);
+    z-index: 400; align-items: center; justify-content: center; flex-direction: column; gap: 16px;
+  }
+  #loading-overlay.show { display: flex; }
+  .spinner { width: 36px; height: 36px; border: 3px solid #E2DDD8; border-top-color: #32E8A9; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Config readonly */
+  .config-readonly input, .config-readonly select, .config-readonly button:not(.allow-readonly) { opacity: 0.5; pointer-events: none; }
+</style>
+<script>
+  tailwind.config = {
+    theme: { extend: { colors: { simpleza: { bg: '#F9F4ED', sidebar: '#151818', accent: '#32E8A9', muted: '#7F8C8C', border: '#E2DDD8', danger: '#CD6155' } } } }
+  }
+</script>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p class="text-sm font-semibold text-simpleza-muted">Cargando datos...</p>
+</div>
+
+<div id="app">
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div class="p-6 border-b border-white/10">
+    <div class="text-simpleza-accent font-bold text-xl tracking-tight">Simpleza</div>
+    <div class="text-white/40 text-xs mt-0.5">Gestión de Calendario</div>
+  </div>
+  <nav class="flex-grow py-6">
+    <div class="px-6 text-[10px] uppercase tracking-widest text-white/40 font-bold mb-4">Módulos</div>
+    <div class="nav-item active px-6 py-3 flex items-center gap-3" onclick="navigateTo('calendario')">
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+      <span>Calendario</span>
+    </div>
+    <div class="nav-item px-6 py-3 flex items-center gap-3" onclick="navigateTo('empresas')">
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+      <span>Empresas</span>
+    </div>
+    <div class="nav-item px-6 py-3 flex items-center gap-3" onclick="navigateTo('configuracion')">
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+      <span>Configuración</span>
+    </div>
+  </nav>
+
+  <!-- Edit mode toggle -->
+  <div class="p-4 border-t border-white/10">
+    <button id="btn-edit-mode" onclick="openLoginModal()"
+      class="w-full text-left text-xs font-bold text-white/40 hover:text-simpleza-accent transition-colors flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-white/5">
+      <svg class="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+      Modo Edición
+    </button>
+    <button id="btn-exit-edit" onclick="exitEdit()"
+      class="hidden w-full text-left text-xs font-bold text-simpleza-accent flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-white/5">
+      <svg class="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+      Editando · Salir
+    </button>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="p-8" id="main-content">
+
+  <!-- Header -->
+  <div class="flex justify-between items-end mb-8">
+    <div>
+      <h1 class="text-3xl font-bold tracking-tight text-simpleza-sidebar mb-1" id="page-title">Calendario de Reuniones</h1>
+      <p class="text-simpleza-muted text-sm">Hoy: <span id="system-date-display"></span></p>
+    </div>
+    <div id="header-actions" class="hidden">
+      <button class="bg-simpleza-accent text-simpleza-sidebar px-6 py-2.5 rounded-lg font-bold shadow-sm hover:shadow-md transition-all flex items-center gap-2" onclick="regenerateCalendar()">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+        Re-generar Futuro
+      </button>
+    </div>
+  </div>
+
+  <!-- =================== CALENDARIO TAB =================== -->
+  <section class="tab-content" id="tab-calendario">
+    <!-- Filters -->
+    <div class="bg-white p-5 rounded-xl border border-simpleza-border shadow-sm mb-6 flex flex-wrap gap-4 items-end">
+      <div class="flex-grow min-w-[200px]">
+        <label class="block text-[10px] font-bold uppercase text-simpleza-muted mb-1">Buscar Empresa</label>
+        <input class="w-full rounded-lg border-simpleza-border focus:ring-simpleza-accent focus:border-simpleza-accent text-sm" id="filter-search" oninput="applyFilters()" placeholder="Ej: Agroconsultas..." type="text"/>
+      </div>
+      <div class="w-32">
+        <label class="block text-[10px] font-bold uppercase text-simpleza-muted mb-1">Año</label>
+        <select class="w-full rounded-lg border-simpleza-border focus:ring-simpleza-accent focus:border-simpleza-accent text-sm" id="filter-year" onchange="applyFilters()">
+          <option value="all">Todos</option>
+          <option value="2025">2025</option>
+          <option value="2026">2026</option>
+          <option value="2027">2027</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[10px] font-bold uppercase text-simpleza-muted mb-1">Meses</label>
+        <div class="month-dropdown-wrapper" id="month-dropdown-wrapper">
+          <div class="month-dropdown-trigger" id="month-dropdown-trigger" onclick="toggleMonthDropdown(event)">
+            <svg class="h-4 w-4 text-simpleza-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+            <span id="month-trigger-label" class="flex-grow text-sm text-simpleza-sidebar">Todos los meses</span>
+            <span class="badge hidden" id="month-count-badge"></span>
+            <svg class="h-4 w-4 text-simpleza-muted flex-shrink-0 transition-transform" id="month-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+          </div>
+          <div class="month-dropdown-panel" id="month-dropdown-panel">
+            <div class="actions">
+              <button onclick="selectAllMonths()">Todos</button>
+              <button onclick="selectNoMonths()">Ninguno</button>
+            </div>
+            <div class="month-dropdown-grid" id="month-dropdown-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-xl border border-simpleza-border shadow-sm overflow-hidden">
+      <div class="max-h-[calc(100vh-300px)] overflow-y-auto relative">
+        <table class="w-full text-left border-collapse">
+          <thead class="sticky-header">
+            <tr>
+              <th class="px-4 py-4 font-bold text-xs uppercase text-simpleza-muted w-10">#</th>
+              <th class="px-4 py-4 font-bold text-xs uppercase text-simpleza-muted w-32">Fecha</th>
+              <th class="px-4 py-4 font-bold text-xs uppercase text-simpleza-muted w-52">Asignación</th>
+              <th class="px-4 py-4 font-bold text-xs uppercase text-simpleza-muted">Tema tratado</th>
+              <th class="px-4 py-4 font-bold text-xs uppercase text-simpleza-muted w-48">Observaciones</th>
+              <th class="px-4 py-4 font-bold text-xs uppercase text-simpleza-muted w-24">Cadencia</th>
+              <th id="th-fix" class="px-4 py-4 font-bold text-xs uppercase text-simpleza-muted text-center w-16 hidden">Fijar</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-simpleza-border" id="calendar-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== EMPRESAS TAB =================== -->
+  <section class="tab-content hidden" id="tab-empresas">
+    <!-- Add company bar (only visible in edit mode) -->
+    <div id="add-company-bar" class="hidden bg-white p-5 rounded-xl border border-simpleza-border shadow-sm mb-6 flex items-center gap-4">
+      <div class="flex-grow flex gap-3">
+        <input class="flex-grow rounded-lg border-simpleza-border focus:ring-simpleza-accent focus:border-simpleza-accent text-sm" id="new-company-name" placeholder="Nombre de la nueva empresa..." type="text" onkeydown="if(event.key==='Enter') addCompany()"/>
+        <input type="color" id="new-company-color" value="#32E8A9" class="w-10 h-10 p-0.5 border border-simpleza-border rounded-lg cursor-pointer bg-white" title="Color"/>
+      </div>
+      <button class="bg-simpleza-sidebar text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 hover:bg-opacity-90 transition-all text-sm" onclick="addCompany()">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+        Agregar empresa
+      </button>
+    </div>
+
+    <div class="mb-8">
+      <h3 class="text-xs font-bold uppercase tracking-widest text-simpleza-muted mb-4 flex items-center gap-2">
+        <span class="w-2 h-2 bg-simpleza-accent rounded-full"></span> Activas
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="active-companies"></div>
+    </div>
+
+    <div id="inactive-section" class="hidden">
+      <h3 class="text-xs font-bold uppercase tracking-widest text-simpleza-muted mb-4 flex items-center gap-2">
+        <span class="w-2 h-2 bg-simpleza-muted rounded-full"></span> Inactivas
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="inactive-companies"></div>
+    </div>
+  </section>
+
+  <!-- =================== CONFIGURACIÓN TAB =================== -->
+  <section class="tab-content hidden" id="tab-configuracion">
+    <div class="max-w-4xl space-y-6">
+
+      <!-- Readonly notice (visible when not editing) -->
+      <div id="config-readonly-notice" class="hidden bg-white border border-simpleza-border rounded-xl p-4 flex items-center gap-3 text-sm text-simpleza-muted">
+        <svg class="h-5 w-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+        Modo solo lectura. Iniciá el modo edición desde el menú lateral para modificar la configuración.
+      </div>
+
+      <div id="config-form-wrap">
+        <!-- General -->
+        <div class="bg-white p-8 rounded-xl border border-simpleza-border shadow-sm">
+          <h3 class="text-lg font-bold mb-5 border-b pb-4">General</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label class="block text-sm font-bold text-simpleza-sidebar mb-2">Nombre del Grupo</label>
+              <input class="w-full rounded-lg border-simpleza-border text-sm" id="config-group-name" type="text" value="Grupo III"/>
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-simpleza-sidebar mb-2">Día de reunión semanal</label>
+              <select id="config-meeting-day" onchange="updateMeetingDay()" class="w-full rounded-lg border-simpleza-border text-sm focus:ring-simpleza-accent focus:border-simpleza-accent">
+                <option value="1">Lunes</option>
+                <option value="2">Martes</option>
+                <option value="3" selected>Miércoles</option>
+                <option value="4">Jueves</option>
+                <option value="5">Viernes</option>
+              </select>
+              <p class="text-[10px] text-simpleza-muted mt-1.5">Cambiarlo requiere re-generar el calendario.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cadencia -->
+        <div class="bg-white p-8 rounded-xl border border-simpleza-border shadow-sm">
+          <h3 class="text-lg font-bold mb-1">Cadencia de Reuniones de Empresa</h3>
+          <p class="text-sm text-simpleza-muted mb-6">Define cada cuántos días mínimos debe volver a aparecer cada empresa. Los espacios intermedios se llenarán alternando <strong>Ronda de novedades</strong> y <strong>Reunión técnica</strong> según la proporción configurada.</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div class="md:col-span-2">
+              <label class="block text-xs font-bold uppercase text-simpleza-muted mb-3">Intervalo mínimo por empresa</label>
+              <div class="flex items-center gap-4">
+                <input type="range" min="42" max="140" step="7" id="config-cadence-days" oninput="updateCadenceDisplay()" class="flex-grow accent-green-400 h-2" value="42"/>
+                <span class="text-xl font-bold text-simpleza-sidebar w-24 text-right" id="cadence-display">42 días</span>
+              </div>
+              <div class="flex justify-between text-[10px] text-simpleza-muted mt-2">
+                <span>6 semanas</span><span>13 semanas</span><span>20 semanas</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-simpleza-muted mb-3">Proporción Novedades : Técnica</label>
+              <div class="flex gap-3 items-center">
+                <div class="flex-1 text-center">
+                  <input type="number" min="0" max="10" value="1" id="config-novedades-ratio" oninput="updateCadenceDisplay()" class="w-full rounded-lg border-simpleza-border text-center font-bold text-sm"/>
+                  <p class="text-[10px] text-simpleza-muted mt-1">Novedades</p>
+                </div>
+                <span class="text-simpleza-muted font-bold text-lg">:</span>
+                <div class="flex-1 text-center">
+                  <input type="number" min="0" max="10" value="1" id="config-tecnica-ratio" oninput="updateCadenceDisplay()" class="w-full rounded-lg border-simpleza-border text-center font-bold text-sm"/>
+                  <p class="text-[10px] text-simpleza-muted mt-1">Técnica</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div class="bg-simpleza-bg rounded-xl p-4 mb-5">
+            <p class="text-[10px] font-bold uppercase text-simpleza-muted mb-3">Vista previa del patrón de rotación</p>
+            <div class="flex gap-2 flex-wrap items-center" id="cadence-preview"></div>
+          </div>
+
+          <button onclick="regenerateCalendar()" class="bg-simpleza-accent text-simpleza-sidebar font-bold px-6 py-3 rounded-lg hover:bg-opacity-90 transition-all flex items-center gap-2 text-sm">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+            Aplicar y Re-generar Calendario
+          </button>
+        </div>
+
+        <!-- Matriz Disponibilidad -->
+        <div class="bg-white p-8 rounded-xl border border-simpleza-border shadow-sm">
+          <h3 class="text-lg font-bold mb-1">Matriz de Disponibilidad</h3>
+          <p class="text-sm text-simpleza-muted mb-5" id="matrix-subtitle">Marcá en qué semana del mes puede presentar cada empresa.</p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead id="matrix-header">
+                <tr class="bg-simpleza-bg text-simpleza-muted font-bold">
+                  <th class="p-4 text-left">Empresa</th>
+                  <th class="p-4 text-center">1°</th>
+                  <th class="p-4 text-center">2°</th>
+                  <th class="p-4 text-center">3°</th>
+                  <th class="p-4 text-center">4°</th>
+                  <th class="p-4 text-center">5°</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-simpleza-border" id="matrix-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Danger zone -->
+        <div class="bg-white p-8 rounded-xl border border-simpleza-border shadow-sm">
+          <h3 class="text-lg font-bold mb-5 border-b pb-4 text-simpleza-danger">Zona de Peligro</h3>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-bold text-sm">Reiniciar todo el sistema</p>
+              <p class="text-sm text-simpleza-muted">Borrará todo el historial y configuraciones personalizadas.</p>
+            </div>
+            <button class="bg-simpleza-danger text-white px-6 py-2.5 rounded-lg font-bold text-sm" onclick="fullReset()">Reset de Fábrica</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+</div>
+
+<!-- COMPANY MODAL -->
+<div id="company-modal-overlay" onclick="if(event.target===this) closeCompanyModal()">
+  <div id="company-modal">
+    <div class="modal-header">
+      <div id="modal-avatar" class="avatar" style="width:46px;height:46px;border-radius:12px;font-size:0.95rem;"></div>
+      <div class="flex-grow min-w-0">
+        <h2 id="modal-company-name" class="text-lg font-bold text-simpleza-sidebar leading-tight"></h2>
+        <p id="modal-reps" class="text-xs text-simpleza-muted mt-0.5 hidden"></p>
+      </div>
+      <div class="flex items-center gap-3 flex-shrink-0">
+        <span id="modal-count" class="text-xs font-bold text-simpleza-muted bg-simpleza-bg px-3 py-1 rounded-full"></span>
+        <button onclick="closeCompanyModal()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-simpleza-bg text-simpleza-muted transition-colors text-lg font-bold">✕</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <p id="modal-year-label" class="text-[10px] font-bold uppercase tracking-widest text-simpleza-muted mb-4"></p>
+      <div id="modal-meeting-list"></div>
+    </div>
+    <div class="modal-footer text-right">
+      <button onclick="closeCompanyModal()" class="bg-simpleza-sidebar text-white text-sm font-bold px-5 py-2 rounded-lg hover:bg-opacity-90 transition-all">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN / EDIT MODE MODAL -->
+<div id="login-modal">
+  <div class="bg-white rounded-2xl w-80 max-w-[90vw] shadow-2xl overflow-hidden">
+    <div class="bg-simpleza-sidebar px-6 py-5 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-simpleza-accent/20 flex items-center justify-center flex-shrink-0">
+        <svg class="h-5 w-5 text-simpleza-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+      </div>
+      <div>
+        <p class="text-white font-bold text-sm">Modo Edición</p>
+        <p class="text-white/50 text-xs">Ingresá la contraseña para editar</p>
+      </div>
+    </div>
+    <div class="px-6 py-5 space-y-4">
+      <div>
+        <label class="block text-xs font-bold uppercase text-simpleza-muted mb-1.5">Contraseña</label>
+        <input id="login-pwd" type="password" placeholder="••••••"
+          class="w-full rounded-lg border-simpleza-border text-sm focus:ring-simpleza-accent focus:border-simpleza-accent"
+          onkeydown="if(event.key==='Enter') tryLogin()"/>
+      </div>
+      <p id="login-error" class="hidden text-xs font-semibold text-simpleza-danger">Contraseña incorrecta.</p>
+      <div class="flex gap-3 pt-1">
+        <button onclick="closeLoginModal()"
+          class="flex-1 border border-simpleza-border text-simpleza-muted text-sm font-bold px-4 py-2.5 rounded-lg hover:bg-simpleza-bg transition-all">
+          Cancelar
+        </button>
+        <button onclick="tryLogin()"
+          class="flex-1 bg-simpleza-accent text-simpleza-sidebar text-sm font-bold px-4 py-2.5 rounded-lg hover:bg-opacity-90 transition-all">
+          Ingresar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ======= SUPABASE CONFIG =======
+  // Reemplazar con tus credenciales de Supabase:
+  const SUPABASE_URL      = 'PEGAR_TU_URL_AQUI';
+  const SUPABASE_ANON_KEY = 'PEGAR_TU_ANON_KEY_AQUI';
+  const EDIT_PASSWORD     = 'A1234b';
+
+  const _dbConfigured = SUPABASE_URL !== 'PEGAR_TU_URL_AQUI';
+  const db = _dbConfigured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+  let isEditing = false;
+
+  // ======= CONSTANTS =======
+  const SYSTEM_DATE = new Date();
+  SYSTEM_DATE.setHours(0, 0, 0, 0);
+
+  const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const COLOR_PALETTE = ['#6C868C','#32E8A9','#F7DC6F','#CD6155','#616A6B','#7F7F7F','#D9CCC1','#89B4C8','#B08FD4'];
+  const HOLIDAYS = ['01-01','03-24','04-02','05-01','05-25','06-20','07-09','08-17','10-12','11-20','12-08','12-25'];
+
+  // Defaults para fullReset
+  const DEFAULT_COMPANIES = [
+    { id: 1, name: 'Cusillos',        color: '#6C868C', active: true, matrix: [true,true,true,true,true],  reps: [] },
+    { id: 2, name: 'Berardo',         color: '#32E8A9', active: true, matrix: [true,true,true,true,true],  reps: [] },
+    { id: 3, name: 'Sacfil',          color: '#F7DC6F', active: true, matrix: [true,true,true,true,true],  reps: [] },
+    { id: 4, name: 'Altuy',           color: '#CD6155', active: true, matrix: [true,true,true,true,true],  reps: [] },
+    { id: 5, name: 'Simpleza',        color: '#616A6B', active: true, matrix: [false,true,true,true,true], reps: [] },
+    { id: 6, name: 'Llorente Hnos',   color: '#7F7F7F', active: true, matrix: [true,true,true,true,true],  reps: [] },
+    { id: 7, name: 'Horreos del SDE', color: '#D9CCC1', active: true, matrix: [true,true,true,true,true],  reps: [] },
+    { id: 8, name: 'Juan Cardini',    color: '#89B4C8', active: true, matrix: [true,true,true,true,true],  reps: [] },
+    { id: 9, name: 'Agroconsultas',   color: '#B08FD4', active: true, matrix: [true,true,true,true,true],  reps: [] }
+  ];
+
+  const INITIAL_HISTORICAL = [
+    { date: '2024-10-23', assignment: 'Simpleza',           obs: 'Presentación',        topic: 'Presentación del grupo', fixed: false },
+    { date: '2024-10-30', assignment: 'Ronda de novedades', obs: '5ta semana',           topic: '',                       fixed: false },
+    { date: '2024-11-06', assignment: 'Llorente Hnos',      obs: '',                    topic: '',                       fixed: false },
+    { date: '2024-11-13', assignment: 'Cusillos',           obs: '',                    topic: '',                       fixed: false },
+    { date: '2024-11-20', assignment: 'Técnica',            obs: '',                    topic: '',                       fixed: false },
+    { date: '2024-11-27', assignment: 'Horreos del SDE',    obs: '',                    topic: '',                       fixed: false },
+    { date: '2024-12-04', assignment: 'Técnica',            obs: '',                    topic: '',                       fixed: false },
+    { date: '2024-12-11', assignment: 'Sacfil',             obs: '',                    topic: '',                       fixed: false },
+    { date: '2024-12-18', assignment: 'Ronda de novedades', obs: '',                    topic: '',                       fixed: false },
+    { date: '2024-12-25', assignment: 'Feriado',            obs: 'Navidad',             topic: '',                       fixed: false },
+    { date: '2025-01-01', assignment: 'Feriado',            obs: 'Año Nuevo',           topic: '',                       fixed: false },
+    { date: '2025-01-08', assignment: 'Simpleza',           obs: '',                    topic: '',                       fixed: false },
+    { date: '2025-01-15', assignment: 'Berardo',            obs: '',                    topic: '',                       fixed: false },
+    { date: '2025-01-22', assignment: 'Agroconsultas',      obs: '',                    topic: '',                       fixed: false },
+    { date: '2025-01-29', assignment: 'Ronda de novedades', obs: 'Novedades y avances', topic: '',                       fixed: false },
+    { date: '2025-02-05', assignment: 'Técnica',            obs: 'Gastos de estructura',topic: 'Estructura de costos',   fixed: false },
+  ];
+
+  let state = {
+    groupName: 'Grupo III',
+    currentTab: 'calendario',
+    selectedMonths: [0,1,2,3,4,5,6,7,8,9,10,11],
+    cadenceDays: 42,
+    novedadesRatio: 1,
+    tecnicaRatio: 1,
+    meetingDayOfWeek: 3,
+    companies: [],
+    meetings: []
+  };
+
+  // ======= LOADING =======
+  function showLoading(v) {
+    document.getElementById('loading-overlay').classList.toggle('show', v);
+  }
+
+  // ======= SUPABASE LOAD =======
+  async function loadFromSupabase() {
+    if (!db) return false;
+    showLoading(true);
+    try {
+      const [{ data: cfg }, { data: cos }, { data: mtg }] = await Promise.all([
+        db.from('config').select('*').eq('id', 1).maybeSingle(),
+        db.from('companies').select('*').order('sort_order').order('id'),
+        db.from('meetings').select('*').order('date')
+      ]);
+      if (cfg) {
+        state.groupName        = cfg.group_name;
+        state.cadenceDays      = cfg.cadence_days;
+        state.novedadesRatio   = cfg.novedades_ratio;
+        state.tecnicaRatio     = cfg.tecnica_ratio;
+        state.meetingDayOfWeek = cfg.meeting_day_of_week;
+      }
+      if (cos?.length) {
+        state.companies = cos.map(c => ({
+          id: c.id, name: c.name, color: c.color, active: c.active,
+          matrix: Array.isArray(c.matrix) ? c.matrix : JSON.parse(c.matrix || '[true,true,true,true,true]'),
+          reps:   Array.isArray(c.reps)   ? c.reps   : JSON.parse(c.reps   || '[]')
+        }));
+      }
+      if (mtg?.length) {
+        state.meetings = mtg.map(m => ({
+          date: m.date, assignment: m.assignment,
+          obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed
+        }));
+      }
+      return true;
+    } catch(e) {
+      console.error('Supabase load error:', e);
+      return false;
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  // ======= SUPABASE SAVE =======
+  async function _saveMeeting(dateStr) {
+    if (!db || !isEditing) return;
+    const m = state.meetings.find(m => m.date === dateStr);
+    if (!m) return;
+    await db.from('meetings').upsert({ date: m.date, assignment: m.assignment, obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed });
+  }
+
+  async function _saveAllMeetings() {
+    if (!db || !isEditing) return;
+    const rows = state.meetings.map(m => ({ date: m.date, assignment: m.assignment, obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed }));
+    for (let i = 0; i < rows.length; i += 100) {
+      await db.from('meetings').upsert(rows.slice(i, i + 100));
+    }
+  }
+
+  async function _deleteAllMeetings() {
+    if (!db || !isEditing) return;
+    await db.from('meetings').delete().gte('date', '2000-01-01');
+  }
+
+  async function _saveCompany(coId) {
+    if (!db || !isEditing) return;
+    const co = state.companies.find(c => c.id === coId);
+    if (!co) return;
+    await db.from('companies').upsert({
+      id: co.id, name: co.name, color: co.color, active: co.active,
+      matrix: co.matrix, reps: co.reps,
+      sort_order: state.companies.indexOf(co)
+    });
+  }
+
+  async function _saveAllCompanies() {
+    if (!db || !isEditing) return;
+    const rows = state.companies.map((co, i) => ({ id: co.id, name: co.name, color: co.color, active: co.active, matrix: co.matrix, reps: co.reps, sort_order: i }));
+    await db.from('companies').upsert(rows);
+  }
+
+  async function _deleteCompany(coId) {
+    if (!db || !isEditing) return;
+    await db.from('companies').delete().eq('id', coId);
+  }
+
+  async function _saveConfig() {
+    if (!db || !isEditing) return;
+    await db.from('config').upsert({
+      id: 1, group_name: state.groupName, cadence_days: state.cadenceDays,
+      novedades_ratio: state.novedadesRatio, tecnica_ratio: state.tecnicaRatio,
+      meeting_day_of_week: state.meetingDayOfWeek
+    });
+  }
+
+  // ======= LOGIN / EDIT MODE =======
+  function openLoginModal() {
+    document.getElementById('login-modal').classList.add('open');
+    document.getElementById('login-error').classList.add('hidden');
+    document.getElementById('login-pwd').value = '';
+    setTimeout(() => document.getElementById('login-pwd').focus(), 60);
+  }
+
+  function closeLoginModal() {
+    document.getElementById('login-modal').classList.remove('open');
+  }
+
+  function tryLogin() {
+    if (document.getElementById('login-pwd').value === EDIT_PASSWORD) {
+      isEditing = true;
+      closeLoginModal();
+      applyEditMode();
+      render();
+    } else {
+      document.getElementById('login-error').classList.remove('hidden');
+      document.getElementById('login-pwd').select();
+    }
+  }
+
+  function exitEdit() {
+    isEditing = false;
+    applyEditMode();
+    render();
+  }
+
+  function applyEditMode() {
+    document.getElementById('btn-edit-mode').classList.toggle('hidden', isEditing);
+    document.getElementById('btn-exit-edit').classList.toggle('hidden', !isEditing);
+    document.getElementById('header-actions').classList.toggle('hidden', !isEditing);
+    document.getElementById('add-company-bar').classList.toggle('hidden', !isEditing);
+    document.getElementById('th-fix').classList.toggle('hidden', !isEditing);
+
+    const notice = document.getElementById('config-readonly-notice');
+    const form   = document.getElementById('config-form-wrap');
+    if (notice) notice.classList.toggle('hidden', isEditing);
+    if (form) form.classList.toggle('config-readonly', !isEditing);
+  }
+
+  // ======= MONTH DROPDOWN =======
+  let monthDropdownOpen = false;
+
+  function buildMonthDropdown() {
+    const grid = document.getElementById('month-dropdown-grid');
+    grid.innerHTML = '';
+    MONTHS.forEach((m, i) => {
+      const el = document.createElement('div');
+      el.className = `month-option ${state.selectedMonths.includes(i) ? 'selected' : ''}`;
+      el.textContent = m.substring(0, 3);
+      el.dataset.idx = i;
+      el.onclick = () => toggleMonth(i);
+      grid.appendChild(el);
+    });
+    updateMonthTriggerLabel();
+  }
+
+  function toggleMonth(idx) {
+    if (state.selectedMonths.includes(idx)) state.selectedMonths = state.selectedMonths.filter(x => x !== idx);
+    else { state.selectedMonths.push(idx); state.selectedMonths.sort((a,b) => a-b); }
+    document.querySelectorAll('.month-option').forEach(el => {
+      el.className = `month-option ${state.selectedMonths.includes(parseInt(el.dataset.idx)) ? 'selected' : ''}`;
+    });
+    updateMonthTriggerLabel();
+    applyFilters();
+  }
+
+  function selectAllMonths() { state.selectedMonths = [0,1,2,3,4,5,6,7,8,9,10,11]; buildMonthDropdown(); applyFilters(); }
+  function selectNoMonths()  { state.selectedMonths = []; buildMonthDropdown(); applyFilters(); }
+
+  function updateMonthTriggerLabel() {
+    const label = document.getElementById('month-trigger-label');
+    const badge = document.getElementById('month-count-badge');
+    const n = state.selectedMonths.length;
+    if (n === 0)   { label.textContent = 'Ningún mes';  badge.classList.add('hidden'); }
+    else if (n === 12) { label.textContent = 'Todos los meses'; badge.classList.add('hidden'); }
+    else if (n === 1)  { label.textContent = MONTHS[state.selectedMonths[0]]; badge.classList.add('hidden'); }
+    else { label.textContent = `${n} meses`; badge.textContent = n; badge.classList.remove('hidden'); }
+  }
+
+  function toggleMonthDropdown(e) {
+    e.stopPropagation();
+    monthDropdownOpen = !monthDropdownOpen;
+    document.getElementById('month-dropdown-panel').classList.toggle('open', monthDropdownOpen);
+    document.getElementById('month-chevron').style.transform = monthDropdownOpen ? 'rotate(180deg)' : '';
+  }
+
+  document.addEventListener('click', (e) => {
+    if (monthDropdownOpen && !document.getElementById('month-dropdown-wrapper').contains(e.target)) {
+      monthDropdownOpen = false;
+      document.getElementById('month-dropdown-panel').classList.remove('open');
+      document.getElementById('month-chevron').style.transform = '';
+    }
+  });
+
+  // ======= INIT =======
+  async function init() {
+    // UI state from localStorage (non-critical)
+    try {
+      const ui = JSON.parse(localStorage.getItem('simpleza_ui') || '{}');
+      if (ui.selectedMonths) state.selectedMonths = ui.selectedMonths;
+    } catch(e) {}
+
+    document.getElementById('system-date-display').textContent =
+      SYSTEM_DATE.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const loaded = await loadFromSupabase();
+
+    if (!loaded && !_dbConfigured) {
+      // No Supabase configured — run with empty state and show warning
+      console.warn('Supabase no configurado. Editá SUPABASE_URL y SUPABASE_ANON_KEY en el HTML.');
+    }
+
+    // Generate future meetings if needed
+    if (state.meetings.length < 50 && isEditing) {
+      generateFuture(new Date('2025-02-12'), new Date('2027-12-31'));
+      await _saveAllMeetings();
+    } else if (state.meetings.length < 50) {
+      generateFuture(new Date('2025-02-12'), new Date('2027-12-31'));
+    }
+
+    const dayEl = document.getElementById('config-meeting-day');
+    if (dayEl) dayEl.value = state.meetingDayOfWeek;
+
+    applyEditMode();
+    buildMonthDropdown();
+    render();
+  }
+
+  function navigateTo(tab) {
+    state.currentTab = tab;
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.nav-item[onclick="navigateTo('${tab}')"]`).classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.getElementById(`tab-${tab}`).classList.remove('hidden');
+    render();
+  }
+
+  function render() {
+    const titles = { calendario: 'Calendario de Reuniones', empresas: 'Listado de Empresas', configuracion: 'Configuración' };
+    document.getElementById('page-title').innerText = titles[state.currentTab];
+    if (state.currentTab === 'calendario')    renderCalendar();
+    if (state.currentTab === 'empresas')      renderCompanies();
+    if (state.currentTab === 'configuracion') renderConfig();
+    // Save UI state
+    try { localStorage.setItem('simpleza_ui', JSON.stringify({ selectedMonths: state.selectedMonths })); } catch(e) {}
+  }
+
+  // ======= GENERATION =======
+  function isHoliday(date) {
+    const md = `${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    return HOLIDAYS.includes(md);
+  }
+
+  function getDayIndexInMonth(date) {
+    const dow = state.meetingDayOfWeek;
+    let count = 0;
+    let t = new Date(date.getFullYear(), date.getMonth(), 1);
+    while (t <= date) { if (t.getDay() === dow) count++; t.setDate(t.getDate()+1); }
+    return count - 1;
+  }
+
+  function generateFuture(startDate, endDate) {
+    const dow = state.meetingDayOfWeek;
+    let current = new Date(startDate);
+    while (current.getDay() !== dow) current.setDate(current.getDate()+1);
+    while (current <= endDate) {
+      const dateStr = current.toISOString().split('T')[0];
+      const existing = state.meetings.find(m => m.date === dateStr);
+      if (!existing || !existing.fixed) {
+        let assignment, obs;
+        if (isHoliday(current)) {
+          assignment = 'Feriado'; obs = 'Feriado Nacional';
+        } else {
+          const wedIdx = getDayIndexInMonth(current);
+          assignment = pickBestAssignment(current, wedIdx); obs = '';
+        }
+        if (!existing) state.meetings.push({ date: dateStr, assignment, obs, topic: '', fixed: false });
+        else { existing.assignment = assignment; existing.obs = obs; existing.topic = ''; }
+      }
+      current.setDate(current.getDate()+7);
+    }
+    state.meetings.sort((a,b) => new Date(a.date)-new Date(b.date));
+  }
+
+  function pickBestAssignment(date, wedIdx) {
+    const activeCos = state.companies.filter(c => c.active);
+    let bestCo = null, maxGap = -1;
+    activeCos.forEach(co => {
+      if (!co.matrix[Math.min(wedIdx,4)]) return;
+      const last = [...state.meetings].reverse().find(m => m.assignment === co.name && new Date(m.date) < date);
+      const gap = last ? Math.floor((date - new Date(last.date)) / 86400000) : 9999;
+      if (gap > maxGap) { maxGap = gap; bestCo = co; }
+    });
+    if (!bestCo || maxGap < state.cadenceDays) return pickFiller(date);
+    return bestCo.name;
+  }
+
+  function pickFiller(date) {
+    const prev = state.meetings.filter(m =>
+      (m.assignment === 'Ronda de novedades' || m.assignment === 'Técnica') && new Date(m.date) < date
+    );
+    const novC = prev.filter(m => m.assignment === 'Ronda de novedades').length;
+    const tecC = prev.filter(m => m.assignment === 'Técnica').length;
+    const ratio = state.novedadesRatio / (state.novedadesRatio + state.tecnicaRatio);
+    const cur = (novC + tecC) === 0 ? 0 : novC / (novC + tecC);
+    return cur < ratio ? 'Ronda de novedades' : 'Técnica';
+  }
+
+  // ======= RENDER CALENDAR =======
+  function renderCalendar() {
+    const tbody = document.getElementById('calendar-body');
+    const search = document.getElementById('filter-search').value.toLowerCase();
+    const year = document.getElementById('filter-year').value;
+    tbody.innerHTML = '';
+    let counter = 1;
+    state.meetings.forEach(m => {
+      const mDate = new Date(m.date + 'T12:00:00');
+      if (!m.assignment.toLowerCase().includes(search)) return;
+      if (year !== 'all' && mDate.getFullYear().toString() !== year) return;
+      if (!state.selectedMonths.includes(mDate.getMonth())) return;
+
+      const co = state.companies.find(c => c.name === m.assignment);
+      const tagColor = co ? co.color : (m.assignment === 'Feriado' ? '#CD6155' : m.assignment === 'Técnica' ? '#6C868C' : '#7F8C8C');
+      const lastM = [...state.meetings].reverse().find(p => p.assignment === m.assignment && new Date(p.date + 'T12:00:00') < mDate);
+      const gap = lastM ? Math.floor((mDate - new Date(lastM.date + 'T12:00:00')) / 86400000) : null;
+      const isOverdue = gap && gap > 120;
+      const isPast = mDate < SYSTEM_DATE;
+
+      const tr = document.createElement('tr');
+      tr.className = `hover:bg-simpleza-bg transition-colors ${m.fixed ? 'row-fixed' : ''} ${isPast ? 'opacity-70' : ''}`;
+
+      if (isEditing) {
+        tr.draggable = true;
+        tr.dataset.date = m.date;
+        tr.ondragstart = e => e.dataTransfer.setData('text/plain', m.date);
+        tr.ondragover  = e => { e.preventDefault(); tr.classList.add('drag-over'); };
+        tr.ondragleave = () => tr.classList.remove('drag-over');
+        tr.ondrop = e => { e.preventDefault(); tr.classList.remove('drag-over'); swapMeetings(e.dataTransfer.getData('text/plain'), m.date); };
+      }
+
+      const safeObs   = (m.obs   || '').replace(/"/g, '&quot;');
+      const safeTopic = (m.topic || '').replace(/"/g, '&quot;');
+
+      const assignmentCell = isEditing ? `
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${tagColor}"></span>
+          <select onchange="updateField('${m.date}','assignment',this.value); render();"
+            class="rounded-lg border border-simpleza-border text-sm py-1.5 pl-2 pr-7 focus:ring-simpleza-accent focus:border-simpleza-accent bg-white text-simpleza-sidebar font-semibold">
+            <optgroup label="Especial">
+              <option value="Ronda de novedades"${m.assignment==='Ronda de novedades'?' selected':''}>Ronda de novedades</option>
+              <option value="Técnica"${m.assignment==='Técnica'?' selected':''}>Técnica</option>
+              <option value="Feriado"${m.assignment==='Feriado'?' selected':''}>Feriado</option>
+            </optgroup>
+            <optgroup label="Empresas">
+              ${state.companies.map(c => `<option value="${c.name}"${m.assignment===c.name?' selected':''}>${c.name}</option>`).join('')}
+            </optgroup>
+          </select>
+        </div>` : `
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${tagColor}"></span>
+          <span class="text-sm font-semibold text-simpleza-sidebar">${m.assignment}</span>
+        </div>`;
+
+      const topicCell = isEditing ? `
+        <input type="text" value="${safeTopic}"
+          onchange="updateField('${m.date}','topic',this.value)"
+          class="bg-transparent border-none focus:ring-0 w-full p-0 text-sm text-simpleza-sidebar font-medium min-w-[140px]"
+          placeholder="${m.assignment==='Feriado'?'—':'Ej: Cierre ejercicio, Plan siembra...'}">
+      ` : `<span class="text-sm text-simpleza-sidebar font-medium">${m.topic || ''}</span>`;
+
+      const obsCell = isEditing ? `
+        <input type="text" value="${safeObs}"
+          onchange="updateField('${m.date}','obs',this.value)"
+          class="bg-transparent border-none focus:ring-0 w-full p-0 text-sm text-simpleza-muted"
+          placeholder="...">
+      ` : `<span class="text-sm text-simpleza-muted">${m.obs || ''}</span>`;
+
+      const fixCell = isEditing ? `
+        <td class="px-4 py-3.5 text-center">
+          <button onclick="toggleFix('${m.date}')" class="p-1.5 rounded-full hover:bg-black/5 ${m.fixed?'text-simpleza-accent':'text-simpleza-muted'}" title="${m.fixed?'Desfijar':'Fijar fecha'}">
+            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/>
+            </svg>
+          </button>
+        </td>` : '';
+
+      tr.innerHTML = `
+        <td class="px-4 py-3.5 text-xs text-simpleza-muted font-mono">${counter++}</td>
+        <td class="px-4 py-3.5 font-semibold text-sm whitespace-nowrap">
+          ${mDate.toLocaleDateString('es-AR', { day:'2-digit', month:'short', year:'numeric' })}
+        </td>
+        <td class="px-4 py-3.5">${assignmentCell}</td>
+        <td class="px-4 py-3.5">${topicCell}</td>
+        <td class="px-4 py-3.5">${obsCell}</td>
+        <td class="px-4 py-3.5 text-xs font-bold ${isOverdue?'text-simpleza-danger':'text-simpleza-muted'}">
+          ${gap !== null ? gap+'d' : '—'}
+        </td>
+        ${fixCell}
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ======= RENDER COMPANIES =======
+  function renderCompanies() {
+    const activeCont   = document.getElementById('active-companies');
+    const inactiveCont = document.getElementById('inactive-companies');
+    const inactiveSec  = document.getElementById('inactive-section');
+    activeCont.innerHTML = ''; inactiveCont.innerHTML = '';
+
+    const hasInactive = state.companies.some(c => !c.active);
+    inactiveSec.classList.toggle('hidden', !hasInactive);
+
+    state.companies.forEach(co => {
+      if (!co.reps) co.reps = [];
+      const allM   = state.meetings.filter(m => m.assignment === co.name);
+      const pastM  = allM.filter(m => new Date(m.date + 'T12:00:00') < SYSTEM_DATE);
+      const lastM  = pastM[pastM.length - 1] || null;
+      const nextM  = allM.find(m => new Date(m.date + 'T12:00:00') >= SYSTEM_DATE);
+      const daysAgo   = lastM ? Math.floor((SYSTEM_DATE - new Date(lastM.date + 'T12:00:00')) / 86400000) : null;
+      const daysUntil = nextM ? Math.ceil((new Date(nextM.date + 'T12:00:00') - SYSTEM_DATE) / 86400000) : null;
+      const totalPast = pastM.length;
+
+      const progress = daysAgo !== null ? Math.min(100, (daysAgo / state.cadenceDays) * 100) : 0;
+      const barColor = progress >= 100 ? '#CD6155' : progress >= 75 ? '#F7DC6F' : '#32E8A9';
+      const statusLabel = daysAgo !== null
+        ? `<span style="color:${barColor}" class="font-bold">${daysAgo}d</span> desde la última · objetivo cada ${state.cadenceDays}d`
+        : 'Sin reuniones registradas aún';
+      const lastTopic = lastM ? (lastM.topic || lastM.obs || '') : '';
+
+      const repsHtml = co.reps.map((r, idx) => `
+        <span class="rep-tag">${r}${isEditing ? `
+          <button onclick="event.stopPropagation(); removeRep(${co.id},${idx})" title="Quitar">✕</button>` : ''}
+        </span>`).join('');
+
+      const editControls = isEditing ? `
+        <input type="color" value="${co.color}" onclick="event.stopPropagation()" onchange="updateCompanyColor(${co.id}, this.value)"
+          class="w-7 h-7 p-0.5 border border-simpleza-border rounded-md cursor-pointer bg-white" title="Cambiar color"/>
+        <button onclick="event.stopPropagation(); removeCompany(${co.id})"
+          class="w-7 h-7 flex items-center justify-center text-simpleza-muted hover:text-simpleza-danger hover:bg-red-50 rounded-md transition-colors" title="Eliminar">
+          <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>` : '';
+
+      const nameField = isEditing ? `
+        <input class="company-name-input"
+          value="${co.name.replace(/"/g,'&quot;')}"
+          onclick="event.stopPropagation()"
+          onblur="updateCompanyName(${co.id}, this.value)"
+          onkeydown="if(event.key==='Enter') this.blur()"
+          title="Hacé clic para editar el nombre"/>` : `
+        <span class="font-bold text-base text-simpleza-sidebar">${co.name}</span>`;
+
+      const repAddForm = isEditing ? `
+        <div class="flex gap-2 mt-1">
+          <input type="text" id="rep-input-${co.id}" placeholder="Nombre del representante..."
+            class="flex-grow rounded-lg border-simpleza-border text-xs py-1.5 px-2 focus:ring-simpleza-accent focus:border-simpleza-accent"
+            onkeydown="if(event.key==='Enter') addRep(${co.id})"/>
+          <button onclick="addRep(${co.id})"
+            class="bg-simpleza-sidebar text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-opacity-90 transition-all flex-shrink-0">
+            + Agregar
+          </button>
+        </div>` : '';
+
+      const toggleBtn = isEditing ? `
+        <button onclick="event.stopPropagation(); toggleCompanyActive(${co.id})"
+          class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${co.active?'bg-simpleza-accent':'bg-gray-200'}"
+          title="${co.active?'Desactivar':'Activar'}">
+          <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${co.active?'translate-x-5':'translate-x-1'}"></span>
+        </button>` : '';
+
+      const card = document.createElement('div');
+      card.className = `company-card${co.active ? '' : ' inactive'}`;
+      card.style.cursor = 'pointer';
+      card.onclick = (e) => {
+        if (['INPUT','BUTTON','SELECT','LABEL'].includes(e.target.tagName)) return;
+        openCompanyModal(co.id);
+      };
+      card.innerHTML = `
+        <div class="card-stripe" style="background:${co.color}"></div>
+        <div class="card-header">
+          <div class="flex items-center gap-3 flex-grow min-w-0">
+            <div class="avatar flex-shrink-0" style="background:${co.color}">${co.name.substring(0,2).toUpperCase()}</div>
+            <div class="min-w-0 flex-grow">
+              ${nameField}
+              <p class="text-[10px] text-simpleza-muted mt-0.5">${totalPast} reunión${totalPast!==1?'es':''} registrada${totalPast!==1?'s':''}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 flex-shrink-0">${editControls}</div>
+        </div>
+        <div class="card-body">
+          <div class="cadence-bar">
+            <div class="cadence-fill" style="width:${progress}%;background:${barColor}"></div>
+          </div>
+          <p class="text-[10px] text-simpleza-muted mb-4">${statusLabel}</p>
+          <div class="stat-row">
+            <div class="stat-box">
+              <div class="label">Última reunión</div>
+              <div class="value">${lastM ? new Date(lastM.date + 'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'}) : '—'}</div>
+              ${lastTopic ? `<div class="sub" title="${lastTopic}">${lastTopic}</div>` : '<div class="sub">Sin tema registrado</div>'}
+            </div>
+            <div class="stat-box">
+              <div class="label">Próxima reunión</div>
+              <div class="value">${nextM ? new Date(nextM.date + 'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'}) : '—'}</div>
+              ${daysUntil !== null ? `<div class="sub">en ${daysUntil} días</div>` : '<div class="sub">No programada</div>'}
+            </div>
+          </div>
+          <div class="mt-3" onclick="event.stopPropagation()">
+            <p class="text-[10px] font-bold uppercase text-simpleza-muted mb-2">Representantes</p>
+            <div class="flex flex-wrap gap-1.5 mb-2" id="reps-${co.id}">${repsHtml || '<span class="text-[10px] text-simpleza-muted italic">Sin representantes</span>'}</div>
+            ${repAddForm}
+          </div>
+        </div>
+        <div class="card-footer">
+          <span class="text-[10px] font-bold uppercase tracking-wider" style="color:${co.active?'#32E8A9':'#7F8C8C'}">${co.active?'Activa':'Inactiva'}</span>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] text-simpleza-muted cursor-pointer hover:text-simpleza-accent transition-colors" onclick="event.stopPropagation(); openCompanyModal(${co.id})">Ver reuniones →</span>
+            ${toggleBtn}
+          </div>
+        </div>
+      `;
+      if (co.active) activeCont.appendChild(card);
+      else inactiveCont.appendChild(card);
+    });
+  }
+
+  // ======= RENDER CONFIG =======
+  function renderConfig() {
+    const notice = document.getElementById('config-readonly-notice');
+    const form   = document.getElementById('config-form-wrap');
+    if (notice) notice.classList.toggle('hidden', isEditing);
+    if (form) form.classList.toggle('config-readonly', !isEditing);
+
+    const dayEl = document.getElementById('config-meeting-day');
+    if (dayEl) dayEl.value = state.meetingDayOfWeek;
+
+    const DAY_ABBR = {1:'Lun',2:'Mar',3:'Mié',4:'Jue',5:'Vie'};
+    const abbr = DAY_ABBR[state.meetingDayOfWeek] || 'Día';
+    const ORDINALS = ['1°','2°','3°','4°','5°'];
+    const header = document.getElementById('matrix-header');
+    if (header) {
+      header.innerHTML = `<tr class="bg-simpleza-bg text-simpleza-muted font-bold">
+        <th class="p-4 text-left">Empresa</th>
+        ${ORDINALS.map(o => `<th class="p-4 text-center">${o} ${abbr}</th>`).join('')}
+      </tr>`;
+    }
+
+    const matrixBody = document.getElementById('matrix-body');
+    matrixBody.innerHTML = '';
+    state.companies.forEach(co => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="p-4 font-bold text-sm flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full flex-shrink-0" style="background:${co.color}"></span>${co.name}
+        </td>
+        ${co.matrix.map((val,idx) => `
+          <td class="p-4 text-center">
+            <input type="checkbox" ${val?'checked':''} onchange="updateMatrix(${co.id},${idx},this.checked)"
+              class="rounded text-simpleza-accent focus:ring-simpleza-accent h-5 w-5">
+          </td>`).join('')}
+      `;
+      matrixBody.appendChild(tr);
+    });
+    document.getElementById('config-cadence-days').value   = state.cadenceDays;
+    document.getElementById('config-novedades-ratio').value = state.novedadesRatio;
+    document.getElementById('config-tecnica-ratio').value   = state.tecnicaRatio;
+    updateCadenceDisplay();
+  }
+
+  function updateMeetingDay() {
+    if (!isEditing) return;
+    const el = document.getElementById('config-meeting-day');
+    if (el) state.meetingDayOfWeek = parseInt(el.value);
+    _saveConfig();
+    renderConfig();
+  }
+
+  function updateCadenceDisplay() {
+    const days = parseInt(document.getElementById('config-cadence-days').value) || 42;
+    const nov  = parseInt(document.getElementById('config-novedades-ratio').value) || 1;
+    const tec  = parseInt(document.getElementById('config-tecnica-ratio').value) || 1;
+    state.cadenceDays = days; state.novedadesRatio = nov; state.tecnicaRatio = tec;
+    const weeks = Math.round(days/7);
+    document.getElementById('cadence-display').textContent = `${days}d  (${weeks} sem)`;
+
+    const preview = document.getElementById('cadence-preview');
+    preview.innerHTML = '';
+    const slots = Math.max(6, Math.ceil(days/7));
+    const total = nov + tec;
+    let novC = 0, tecC = 0;
+    for (let i = 0; i < slots; i++) {
+      const isCompany = (i === slots-1);
+      let label, bg, fg;
+      if (isCompany) { label='Empresa'; bg='#32E8A9'; fg='white'; }
+      else {
+        const ratio = nov / total;
+        const cur = (novC+tecC)===0 ? 0 : novC/(novC+tecC);
+        if (cur < ratio) { label='Novedades'; bg='#6C868C'; fg='white'; novC++; }
+        else { label='Técnica'; bg='#D9CCC1'; fg='#1A1D1E'; tecC++; }
+      }
+      const chip = document.createElement('div');
+      chip.style.cssText = `background:${bg};color:${fg};border-radius:7px;padding:4px 10px;font-size:0.65rem;font-weight:700;`;
+      chip.textContent = label;
+      preview.appendChild(chip);
+      if (i < slots-1) {
+        const arr = document.createElement('span');
+        arr.style.cssText = 'color:#E2DDD8;font-size:0.75rem;line-height:1;';
+        arr.textContent = '→';
+        preview.appendChild(arr);
+      }
+    }
+  }
+
+  // ======= INTERACTION =======
+  function toggleFix(dateStr) {
+    if (!isEditing) return;
+    const m = state.meetings.find(m => m.date === dateStr);
+    if (m) { m.fixed = !m.fixed; _saveMeeting(dateStr); render(); }
+  }
+
+  function swapMeetings(dateA, dateB) {
+    if (!isEditing) return;
+    const a = state.meetings.find(m => m.date === dateA);
+    const b = state.meetings.find(m => m.date === dateB);
+    if (!a || !b) return;
+    [a.assignment, b.assignment] = [b.assignment, a.assignment];
+    [a.topic,      b.topic]      = [b.topic,      a.topic];
+    [a.obs,        b.obs]        = [b.obs,        a.obs];
+    _saveMeeting(dateA);
+    _saveMeeting(dateB);
+    render();
+  }
+
+  function updateField(dateStr, field, val) {
+    if (!isEditing) return;
+    const m = state.meetings.find(m => m.date === dateStr);
+    if (m) { m[field] = val; _saveMeeting(dateStr); }
+  }
+
+  function addCompany() {
+    if (!isEditing) return;
+    const input      = document.getElementById('new-company-name');
+    const colorInput = document.getElementById('new-company-color');
+    const name = input.value.trim();
+    if (!name) return;
+    const newCo = {
+      id: Date.now(), name,
+      color: colorInput ? colorInput.value : COLOR_PALETTE[state.companies.length % COLOR_PALETTE.length],
+      active: true, matrix: [true,true,true,true,true], reps: []
+    };
+    state.companies.push(newCo);
+    input.value = '';
+    _saveCompany(newCo.id);
+    render();
+  }
+
+  function removeCompany(id) {
+    if (!isEditing) return;
+    if (confirm('¿Eliminar definitivamente esta empresa?')) {
+      state.companies = state.companies.filter(c => c.id !== id);
+      _deleteCompany(id);
+      render();
+    }
+  }
+
+  function toggleCompanyActive(id) {
+    if (!isEditing) return;
+    const co = state.companies.find(c => c.id === id);
+    if (co) { co.active = !co.active; _saveCompany(id); render(); }
+  }
+
+  function updateCompanyColor(id, color) {
+    if (!isEditing) return;
+    const co = state.companies.find(c => c.id === id);
+    if (co) { co.color = color; _saveCompany(id); render(); }
+  }
+
+  function updateCompanyName(id, newName) {
+    if (!isEditing) return;
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const co = state.companies.find(c => c.id === id);
+    if (!co || co.name === trimmed) return;
+    const oldName = co.name;
+    co.name = trimmed;
+    state.meetings.forEach(m => { if (m.assignment === oldName) m.assignment = trimmed; });
+    _saveCompany(id);
+    // Save affected meetings in bulk
+    const affected = state.meetings.filter(m => m.assignment === trimmed).map(m => m.date);
+    affected.forEach(d => _saveMeeting(d));
+    render();
+  }
+
+  function addRep(coId) {
+    if (!isEditing) return;
+    const input = document.getElementById(`rep-input-${coId}`);
+    if (!input) return;
+    const name = input.value.trim();
+    if (!name) return;
+    const co = state.companies.find(c => c.id === coId);
+    if (!co) return;
+    if (!co.reps) co.reps = [];
+    co.reps.push(name);
+    input.value = '';
+    _saveCompany(coId);
+    render();
+  }
+
+  function removeRep(coId, repIdx) {
+    if (!isEditing) return;
+    const co = state.companies.find(c => c.id === coId);
+    if (co && co.reps) { co.reps.splice(repIdx, 1); _saveCompany(coId); render(); }
+  }
+
+  function openCompanyModal(coId) {
+    const co = state.companies.find(c => c.id === coId);
+    if (!co) return;
+    const year = SYSTEM_DATE.getFullYear();
+    const yearMeetings = state.meetings.filter(m => {
+      const d = new Date(m.date + 'T12:00:00');
+      return m.assignment === co.name && d.getFullYear() === year;
+    });
+
+    document.getElementById('modal-avatar').style.background = co.color;
+    document.getElementById('modal-avatar').textContent = co.name.substring(0,2).toUpperCase();
+    document.getElementById('modal-company-name').textContent = co.name;
+    document.getElementById('modal-year-label').textContent = `Reuniones en ${year}`;
+
+    const repsDiv = document.getElementById('modal-reps');
+    if (co.reps && co.reps.length) {
+      repsDiv.textContent = co.reps.join(' · ');
+      repsDiv.classList.remove('hidden');
+    } else {
+      repsDiv.classList.add('hidden');
+    }
+
+    const list = document.getElementById('modal-meeting-list');
+    list.innerHTML = '';
+    if (yearMeetings.length === 0) {
+      list.innerHTML = '<p class="text-sm text-simpleza-muted italic text-center py-6">No hay reuniones programadas para este año.</p>';
+    } else {
+      yearMeetings.forEach(m => {
+        const d = new Date(m.date + 'T12:00:00');
+        const isPast = d < SYSTEM_DATE;
+        const row = document.createElement('div');
+        row.className = `meeting-row ${isPast ? 'meeting-past' : ''}`;
+        row.innerHTML = `
+          <div class="meeting-dot" style="background:${isPast ? '#7F8C8C' : co.color}"></div>
+          <div class="flex-grow">
+            <p class="text-sm font-semibold text-simpleza-sidebar">
+              ${d.toLocaleDateString('es-AR', { weekday:'long', day:'2-digit', month:'long' })}
+            </p>
+            ${m.topic ? `<p class="text-xs text-simpleza-muted mt-0.5">${m.topic}</p>` : ''}
+            ${m.obs && !m.topic ? `<p class="text-xs text-simpleza-muted mt-0.5">${m.obs}</p>` : ''}
+          </div>
+          <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full" style="background:${isPast?'#F3EDE5':'#32E8A922'};color:${isPast?'#7F8C8C':'#00a070'}">
+            ${isPast ? 'Pasada' : 'Próxima'}
+          </span>
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    document.getElementById('modal-count').textContent = `${yearMeetings.length} reunión${yearMeetings.length!==1?'es':''}`;
+    document.getElementById('company-modal-overlay').classList.add('open');
+  }
+
+  function closeCompanyModal() {
+    document.getElementById('company-modal-overlay').classList.remove('open');
+  }
+
+  function updateMatrix(coId, idx, val) {
+    if (!isEditing) return;
+    const co = state.companies.find(c => c.id === coId);
+    if (co) { co.matrix[idx] = val; _saveCompany(coId); }
+  }
+
+  async function regenerateCalendar() {
+    if (!isEditing) return;
+    const cadEl = document.getElementById('config-cadence-days');
+    const novEl = document.getElementById('config-novedades-ratio');
+    const tecEl = document.getElementById('config-tecnica-ratio');
+    if (cadEl) state.cadenceDays    = parseInt(cadEl.value) || state.cadenceDays;
+    if (novEl) state.novedadesRatio = parseInt(novEl.value) || state.novedadesRatio;
+    if (tecEl) state.tecnicaRatio   = parseInt(tecEl.value) || state.tecnicaRatio;
+
+    state.meetings = state.meetings.filter(m => new Date(m.date + 'T12:00:00') < SYSTEM_DATE || m.fixed);
+    generateFuture(SYSTEM_DATE, new Date('2027-12-31'));
+    showLoading(true);
+    await _saveAllMeetings();
+    await _saveConfig();
+    showLoading(false);
+    render();
+  }
+
+  async function fullReset() {
+    if (!isEditing) return;
+    if (!confirm('¿Estás seguro? Se borrará todo el historial y configuraciones.')) return;
+    state.meetings = JSON.parse(JSON.stringify(INITIAL_HISTORICAL));
+    state.companies = JSON.parse(JSON.stringify(DEFAULT_COMPANIES));
+    state.selectedMonths = [0,1,2,3,4,5,6,7,8,9,10,11];
+    state.cadenceDays = 42; state.novedadesRatio = 1; state.tecnicaRatio = 1;
+    state.meetingDayOfWeek = 3;
+    generateFuture(new Date('2025-02-12'), new Date('2027-12-31'));
+    showLoading(true);
+    await _deleteAllMeetings();
+    await _saveAllMeetings();
+    await _saveAllCompanies();
+    await _saveConfig();
+    showLoading(false);
+    buildMonthDropdown();
+    render();
+  }
+
+  function applyFilters() { renderCalendar(); }
+
+  window.onload = () => init().catch(console.error);
+</script>
+</body>
+</html>
