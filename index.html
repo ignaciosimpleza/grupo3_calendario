@@ -495,7 +495,7 @@
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmamV6am1ndWx2b2xyaWZqcGpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3OTMxNTMsImV4cCI6MjA5MjM2OTE1M30.kM6TpNuErxItzT-oZDNF95C1UsELWDORFEWIKPAv_N0';
   const EDIT_PASSWORD     = 'A1234b';
 
-  const _dbConfigured = SUPABASE_URL !== 'PEGAR_TU_URL_AQUI';
+  const _dbConfigured = SUPABASE_URL !== 'https://tfjezjmgulvolrifpjh.supabase.co';
   const db = _dbConfigured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
   let isEditing = false;
