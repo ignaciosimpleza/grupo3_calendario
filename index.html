@@ -206,6 +206,14 @@
       Editando · Salir
     </button>
   </div>
+
+  <!-- DB STATUS INDICATOR -->
+  <div class="px-4 pb-4">
+    <div id="db-status" class="flex items-center gap-2 px-2 py-1.5 rounded-lg">
+      <span id="db-status-dot" class="w-2 h-2 rounded-full flex-shrink-0 bg-white/20"></span>
+      <span id="db-status-text" class="text-[10px] font-semibold text-white/30">Conectando...</span>
+    </div>
+  </div>
 </aside>
 
 <!-- MAIN -->
@@ -557,16 +565,41 @@
     document.getElementById('loading-overlay').classList.toggle('show', v);
   }
 
+  // 'connecting' | 'ok' | 'saving' | 'error' | 'offline'
+  let _saveTimer = null;
+  function setDbStatus(status, detail) {
+    const dot  = document.getElementById('db-status-dot');
+    const text = document.getElementById('db-status-text');
+    if (!dot || !text) return;
+    const cfg = {
+      connecting: { color: 'bg-white/30',       label: 'Conectando...'      },
+      ok:         { color: 'bg-simpleza-accent', label: 'Guardado ✓'         },
+      saving:     { color: 'bg-yellow-400',      label: 'Guardando...'       },
+      error:      { color: 'bg-red-500',         label: detail || 'Error al guardar ✗' },
+      offline:    { color: 'bg-red-500',         label: 'Sin conexión ✗'     },
+    }[status] || { color: 'bg-white/20', label: '' };
+    dot.className  = `w-2 h-2 rounded-full flex-shrink-0 ${cfg.color}`;
+    text.className = `text-[10px] font-semibold ${status === 'error' || status === 'offline' ? 'text-red-400' : status === 'ok' ? 'text-simpleza-accent/80' : 'text-white/40'}`;
+    text.textContent = cfg.label;
+    // Volver a 'ok' después de 3s si estaba guardando
+    if (status === 'ok') {
+      if (_saveTimer) clearTimeout(_saveTimer);
+      _saveTimer = setTimeout(() => setDbStatus('ok'), 5000);
+    }
+  }
+
   // ======= SUPABASE LOAD =======
   async function loadFromSupabase() {
-    if (!db) return false;
+    if (!db) { setDbStatus('offline', 'Supabase no configurado'); return false; }
+    setDbStatus('connecting');
     showLoading(true);
     try {
-      const [{ data: cfg }, { data: cos }, { data: mtg }] = await Promise.all([
+      const [{ data: cfg, error: e1 }, { data: cos, error: e2 }, { data: mtg, error: e3 }] = await Promise.all([
         db.from('config').select('*').eq('id', 1).maybeSingle(),
         db.from('companies').select('*').order('sort_order').order('id'),
         db.from('meetings').select('*').order('date')
       ]);
+      if (e1 || e2 || e3) throw (e1 || e2 || e3);
       if (cfg) {
         state.groupName        = cfg.group_name;
         state.cadenceDays      = cfg.cadence_days;
@@ -587,12 +620,28 @@
           obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed
         }));
       }
+      setDbStatus('ok');
       return true;
     } catch(e) {
       console.error('Supabase load error:', e);
+      setDbStatus('offline', 'Sin conexión ✗');
       return false;
     } finally {
       showLoading(false);
+    }
+  }
+
+  // Wrapper genérico que actualiza el status en cada operación de escritura
+  async function _dbRun(fn) {
+    if (!db || !isEditing) return;
+    setDbStatus('saving');
+    try {
+      const { error } = await fn();
+      if (error) throw error;
+      setDbStatus('ok');
+    } catch(e) {
+      console.error('Supabase save error:', e);
+      setDbStatus('error', 'Error al guardar ✗');
     }
   }
 
@@ -601,51 +650,51 @@
     if (!db || !isEditing) return;
     const m = state.meetings.find(m => m.date === dateStr);
     if (!m) return;
-    await db.from('meetings').upsert({ date: m.date, assignment: m.assignment, obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed });
+    await _dbRun(() => db.from('meetings').upsert({ date: m.date, assignment: m.assignment, obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed }));
   }
 
   async function _saveAllMeetings() {
     if (!db || !isEditing) return;
     const rows = state.meetings.map(m => ({ date: m.date, assignment: m.assignment, obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed }));
     for (let i = 0; i < rows.length; i += 100) {
-      await db.from('meetings').upsert(rows.slice(i, i + 100));
+      await _dbRun(() => db.from('meetings').upsert(rows.slice(i, i + 100)));
     }
   }
 
   async function _deleteAllMeetings() {
     if (!db || !isEditing) return;
-    await db.from('meetings').delete().gte('date', '2000-01-01');
+    await _dbRun(() => db.from('meetings').delete().gte('date', '2000-01-01'));
   }
 
   async function _saveCompany(coId) {
     if (!db || !isEditing) return;
     const co = state.companies.find(c => c.id === coId);
     if (!co) return;
-    await db.from('companies').upsert({
+    await _dbRun(() => db.from('companies').upsert({
       id: co.id, name: co.name, color: co.color, active: co.active,
       matrix: co.matrix, reps: co.reps,
       sort_order: state.companies.indexOf(co)
-    });
+    }));
   }
 
   async function _saveAllCompanies() {
     if (!db || !isEditing) return;
     const rows = state.companies.map((co, i) => ({ id: co.id, name: co.name, color: co.color, active: co.active, matrix: co.matrix, reps: co.reps, sort_order: i }));
-    await db.from('companies').upsert(rows);
+    await _dbRun(() => db.from('companies').upsert(rows));
   }
 
   async function _deleteCompany(coId) {
     if (!db || !isEditing) return;
-    await db.from('companies').delete().eq('id', coId);
+    await _dbRun(() => db.from('companies').delete().eq('id', coId));
   }
 
   async function _saveConfig() {
     if (!db || !isEditing) return;
-    await db.from('config').upsert({
+    await _dbRun(() => db.from('config').upsert({
       id: 1, group_name: state.groupName, cadence_days: state.cadenceDays,
       novedades_ratio: state.novedadesRatio, tecnica_ratio: state.tecnicaRatio,
       meeting_day_of_week: state.meetingDayOfWeek
-    });
+    }));
   }
 
   // ======= LOGIN / EDIT MODE =======
