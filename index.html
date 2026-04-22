@@ -114,6 +114,37 @@
   .rep-tag button { color: #7F8C8C; line-height: 1; background: none; border: none; cursor: pointer; padding: 0; font-size: 0.75rem; }
   .rep-tag button:hover { color: #CD6155; }
 
+  /* Calendar card view */
+  .cal-card {
+    background: white; border-radius: 14px; border: 1px solid var(--border);
+    padding: 16px 18px; transition: box-shadow 0.15s, transform 0.15s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .cal-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.08); transform: translateY(-1px); }
+  .cal-card.is-past { opacity: 0.6; }
+  .cal-card.is-today { border-color: var(--accent); box-shadow: 0 0 0 2px #32E8A933; }
+  .cal-card.is-fixed { background: #E8FDF5; }
+  .cal-month-header {
+    font-size: 0.65rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--accent); padding: 18px 0 8px;
+    border-bottom: 1px solid var(--border); margin-bottom: 12px;
+  }
+
+  /* Company drag */
+  .company-card.drag-target { outline: 2px dashed var(--accent); opacity: 0.7; }
+  .sort-btn {
+    font-size: 0.65rem; font-weight: 700; padding: 4px 10px; border-radius: 6px;
+    border: 1px solid var(--border); cursor: pointer; background: transparent;
+    color: #7F8C8C; transition: all 0.15s; white-space: nowrap;
+  }
+  .sort-btn:hover, .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #151818; }
+  .view-btn {
+    display: flex; align-items: center; gap: 5px; font-size: 0.75rem; font-weight: 700;
+    padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
+    cursor: pointer; background: white; color: #7F8C8C; transition: all 0.15s;
+  }
+  .view-btn.active { background: #151818; border-color: #151818; color: white; }
+
   /* Company modal */
   #company-modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(21,24,24,0.55);
@@ -250,6 +281,18 @@
           <option value="2027">2027</option>
         </select>
       </div>
+      <!-- View toggle -->
+      <div class="flex items-center gap-2 ml-auto">
+        <button id="btn-view-table" class="view-btn active" onclick="setCalendarView('table')">
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h18M3 14h18M10 4v16M3 4h18v16H3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+          Tabla
+        </button>
+        <button id="btn-view-cards" class="view-btn" onclick="setCalendarView('cards')">
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+          Tarjetas
+        </button>
+      </div>
+
       <div>
         <label class="block text-[10px] font-bold uppercase text-simpleza-muted mb-1">Meses</label>
         <div class="month-dropdown-wrapper" id="month-dropdown-wrapper">
@@ -270,9 +313,12 @@
       </div>
     </div>
 
+    <!-- Cards view -->
+    <div id="calendar-cards-container" class="hidden max-h-[calc(100vh-300px)] overflow-y-auto" id="cards-scroll"></div>
+
     <!-- Table -->
-    <div class="bg-white rounded-xl border border-simpleza-border shadow-sm overflow-hidden">
-      <div class="max-h-[calc(100vh-300px)] overflow-y-auto relative">
+    <div id="calendar-table-container" class="bg-white rounded-xl border border-simpleza-border shadow-sm overflow-hidden">
+      <div class="max-h-[calc(100vh-300px)] overflow-y-auto relative" id="table-scroll">
         <table class="w-full text-left border-collapse">
           <thead class="sticky-header">
             <tr>
@@ -303,6 +349,15 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
         Agregar empresa
       </button>
+    </div>
+
+    <!-- Sort bar (always visible) -->
+    <div class="flex items-center gap-2 mb-5">
+      <span class="text-[10px] font-bold uppercase text-simpleza-muted">Ordenar:</span>
+      <button class="sort-btn" id="sort-btn-alpha"   onclick="sortCompanies('alpha')">A → Z</button>
+      <button class="sort-btn" id="sort-btn-next"    onclick="sortCompanies('next')">Próxima reunión</button>
+      <button class="sort-btn active" id="sort-btn-custom" onclick="sortCompanies('custom')">Personalizado</button>
+      <span id="sort-drag-hint" class="text-[10px] text-simpleza-muted ml-2 hidden">· Arrastrá para reordenar</span>
     </div>
 
     <div class="mb-8">
@@ -557,7 +612,9 @@
     tecnicaRatio: 1,
     meetingDayOfWeek: 3,
     companies: [],
-    meetings: []
+    meetings: [],
+    calendarView: 'table',
+    companiesSortMode: 'custom'
   };
 
   // ======= LOADING =======
@@ -800,7 +857,9 @@
     // UI state from localStorage (non-critical)
     try {
       const ui = JSON.parse(localStorage.getItem('simpleza_ui') || '{}');
-      if (ui.selectedMonths) state.selectedMonths = ui.selectedMonths;
+      if (ui.selectedMonths)     state.selectedMonths     = ui.selectedMonths;
+      if (ui.calendarView)       state.calendarView       = ui.calendarView;
+      if (ui.companiesSortMode)  state.companiesSortMode  = ui.companiesSortMode;
     } catch(e) {}
 
     document.getElementById('system-date-display').textContent =
@@ -826,6 +885,9 @@
 
     applyEditMode();
     buildMonthDropdown();
+    // Restore UI state
+    setCalendarView(state.calendarView || 'table');
+    sortCompanies(state.companiesSortMode || 'custom');
     render();
   }
 
@@ -845,7 +907,7 @@
     if (state.currentTab === 'empresas')      renderCompanies();
     if (state.currentTab === 'configuracion') renderConfig();
     // Save UI state
-    try { localStorage.setItem('simpleza_ui', JSON.stringify({ selectedMonths: state.selectedMonths })); } catch(e) {}
+    try { localStorage.setItem('simpleza_ui', JSON.stringify({ selectedMonths: state.selectedMonths, calendarView: state.calendarView, companiesSortMode: state.companiesSortMode })); } catch(e) {}
   }
 
   // ======= GENERATION =======
@@ -915,11 +977,14 @@
 
   // ======= RENDER CALENDAR =======
   function renderCalendar() {
+    if (state.calendarView === 'cards') { renderCalendarCards(); return; }
     const tbody = document.getElementById('calendar-body');
     const search = document.getElementById('filter-search').value.toLowerCase();
     const year = document.getElementById('filter-year').value;
     tbody.innerHTML = '';
     let counter = 1;
+    const todayStr = localDateStr(SYSTEM_DATE);
+    let firstUpcomingRow = null;
     state.meetings.forEach(m => {
       const mDate = new Date(m.date + 'T12:00:00');
       if (!m.assignment.toLowerCase().includes(search)) return;
@@ -927,14 +992,20 @@
       if (!state.selectedMonths.includes(mDate.getMonth())) return;
 
       const co = state.companies.find(c => c.name === m.assignment);
-      const tagColor = co ? co.color : (m.assignment === 'Feriado' ? '#CD6155' : m.assignment === 'Técnica' ? '#6C868C' : '#7F8C8C');
+      const tagColor = co ? co.color
+        : m.assignment === 'Feriado'     ? '#CD6155'
+        : m.assignment === 'Técnica'     ? '#6C868C'
+        : m.assignment === 'Sin reunión' ? '#D9CCC1'
+        : '#7F8C8C';
       const lastM = [...state.meetings].reverse().find(p => p.assignment === m.assignment && new Date(p.date + 'T12:00:00') < mDate);
       const gap = lastM ? Math.floor((mDate - new Date(lastM.date + 'T12:00:00')) / 86400000) : null;
       const isOverdue = gap && gap > 120;
       const isPast = mDate < SYSTEM_DATE;
 
       const tr = document.createElement('tr');
+      tr.dataset.date = m.date;
       tr.className = `hover:bg-simpleza-bg transition-colors ${m.fixed ? 'row-fixed' : ''} ${isPast ? 'opacity-70' : ''}`;
+      if (!firstUpcomingRow && m.date >= todayStr) firstUpcomingRow = tr;
 
       if (isEditing) {
         tr.draggable = true;
@@ -957,6 +1028,7 @@
               <option value="Ronda de novedades"${m.assignment==='Ronda de novedades'?' selected':''}>Ronda de novedades</option>
               <option value="Técnica"${m.assignment==='Técnica'?' selected':''}>Técnica</option>
               <option value="Feriado"${m.assignment==='Feriado'?' selected':''}>Feriado</option>
+              <option value="Sin reunión"${m.assignment==='Sin reunión'?' selected':''}>Sin reunión</option>
             </optgroup>
             <optgroup label="Empresas">
               ${state.companies.map(c => `<option value="${c.name}"${m.assignment===c.name?' selected':''}>${c.name}</option>`).join('')}
@@ -1006,6 +1078,13 @@
       `;
       tbody.appendChild(tr);
     });
+
+    // Auto-scroll to first upcoming meeting
+    if (firstUpcomingRow) {
+      requestAnimationFrame(() => {
+        firstUpcomingRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
   }
 
   // ======= RENDER COMPANIES =======
@@ -1077,7 +1156,12 @@
 
       const card = document.createElement('div');
       card.className = `company-card${co.active ? '' : ' inactive'}`;
-      card.style.cursor = 'pointer';
+      card.style.cursor = state.companiesSortMode === 'custom' ? 'grab' : 'pointer';
+      card.draggable = state.companiesSortMode === 'custom';
+      card.ondragstart  = (e) => _onCompanyDragStart(e, co.id);
+      card.ondragover   = (e) => _onCompanyDragOver(e, card);
+      card.ondragleave  = ()  => _onCompanyDragLeave(card);
+      card.ondrop       = (e) => _onCompanyDrop(e, co.id);
       card.onclick = (e) => {
         if (['INPUT','BUTTON','SELECT','LABEL'].includes(e.target.tagName)) return;
         openCompanyModal(co.id);
@@ -1419,6 +1503,148 @@
   }
 
   function applyFilters() { renderCalendar(); }
+
+  // ======= CALENDAR VIEW TOGGLE =======
+  function setCalendarView(v) {
+    state.calendarView = v;
+    document.getElementById('calendar-table-container').classList.toggle('hidden', v !== 'table');
+    document.getElementById('calendar-cards-container').classList.toggle('hidden', v !== 'cards');
+    document.getElementById('btn-view-table').classList.toggle('active', v === 'table');
+    document.getElementById('btn-view-cards').classList.toggle('active', v === 'cards');
+    renderCalendar();
+  }
+
+  // ======= CALENDAR CARD RENDER =======
+  function renderCalendarCards() {
+    const container = document.getElementById('calendar-cards-container');
+    const search = document.getElementById('filter-search').value.toLowerCase();
+    const year   = document.getElementById('filter-year').value;
+    container.innerHTML = '';
+
+    let lastMonth = null;
+    let monthWrap = null;
+    const todayStr = localDateStr(SYSTEM_DATE);
+
+    state.meetings.forEach(m => {
+      const mDate = new Date(m.date + 'T12:00:00');
+      if (!m.assignment.toLowerCase().includes(search)) return;
+      if (year !== 'all' && mDate.getFullYear().toString() !== year) return;
+      if (!state.selectedMonths.includes(mDate.getMonth())) return;
+
+      const monthKey = `${mDate.getFullYear()}-${mDate.getMonth()}`;
+      if (monthKey !== lastMonth) {
+        const monthHdr = document.createElement('div');
+        monthHdr.className = 'cal-month-header';
+        monthHdr.textContent = `${MONTHS[mDate.getMonth()]} ${mDate.getFullYear()}`;
+        container.appendChild(monthHdr);
+        monthWrap = document.createElement('div');
+        monthWrap.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-2';
+        container.appendChild(monthWrap);
+        lastMonth = monthKey;
+      }
+
+      const co = state.companies.find(c => c.name === m.assignment);
+      const tagColor = co ? co.color
+        : m.assignment === 'Feriado'          ? '#CD6155'
+        : m.assignment === 'Técnica'          ? '#6C868C'
+        : m.assignment === 'Sin reunión'      ? '#D9CCC1'
+        : '#7F8C8C';
+
+      const isPast    = m.date < todayStr;
+      const isToday   = m.date === todayStr;
+      const isFixed   = m.fixed;
+      const dayName   = mDate.toLocaleDateString('es-AR', { weekday: 'long' });
+      const dayNum    = mDate.getDate();
+
+      const card = document.createElement('div');
+      card.id = `card-${m.date}`;
+      card.className = `cal-card ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''} ${isFixed ? 'is-fixed' : ''}`;
+
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-2 mb-3">
+          <div>
+            <div class="text-2xl font-bold text-simpleza-sidebar leading-none">${dayNum}</div>
+            <div class="text-[10px] text-simpleza-muted capitalize mt-0.5">${dayName}</div>
+          </div>
+          <div class="flex flex-col items-end gap-1">
+            ${isToday ? '<span class="text-[9px] font-bold uppercase bg-simpleza-accent text-simpleza-sidebar px-2 py-0.5 rounded-full">Hoy</span>' : ''}
+            ${isFixed ? '<span class="text-[9px] font-bold uppercase text-simpleza-accent">🔒 Fijado</span>' : ''}
+          </div>
+        </div>
+        <div class="flex items-center gap-2 mb-2">
+          <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${tagColor}"></span>
+          <span class="text-sm font-bold text-simpleza-sidebar truncate">${m.assignment}</span>
+        </div>
+        ${m.topic ? `<p class="text-xs text-simpleza-muted mt-1 truncate" title="${m.topic}">${m.topic}</p>` : ''}
+        ${m.obs   ? `<p class="text-[10px] text-simpleza-muted/70 mt-0.5 truncate" title="${m.obs}">${m.obs}</p>` : ''}
+      `;
+      monthWrap.appendChild(card);
+    });
+
+    // Scroll to today or first upcoming
+    requestAnimationFrame(() => {
+      const todayCard = document.getElementById(`card-${todayStr}`);
+      if (todayCard) { todayCard.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+      // First upcoming
+      const upcoming = state.meetings.find(m => m.date >= todayStr);
+      if (upcoming) {
+        const el = document.getElementById(`card-${upcoming.date}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
+  // ======= COMPANY SORT =======
+  function sortCompanies(mode) {
+    state.companiesSortMode = mode;
+    ['alpha','next','custom'].forEach(m => {
+      const btn = document.getElementById(`sort-btn-${m}`);
+      if (btn) btn.classList.toggle('active', m === mode);
+    });
+    const hint = document.getElementById('sort-drag-hint');
+    if (hint) hint.classList.toggle('hidden', mode !== 'custom');
+
+    if (mode === 'alpha') {
+      state.companies.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    } else if (mode === 'next') {
+      const todayStr = localDateStr(SYSTEM_DATE);
+      state.companies.sort((a, b) => {
+        const nextA = state.meetings.find(m => m.assignment === a.name && m.date >= todayStr);
+        const nextB = state.meetings.find(m => m.assignment === b.name && m.date >= todayStr);
+        const dA = nextA ? nextA.date : '9999-99-99';
+        const dB = nextB ? nextB.date : '9999-99-99';
+        return dA.localeCompare(dB);
+      });
+    }
+    // 'custom' keeps current order
+    renderCompanies();
+  }
+
+  // Company drag-and-drop (saves only in edit mode)
+  let _dragSrcId = null;
+  function _onCompanyDragStart(e, coId) {
+    _dragSrcId = coId;
+    e.dataTransfer.effectAllowed = 'move';
+  }
+  function _onCompanyDragOver(e, card) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    card.classList.add('drag-target');
+  }
+  function _onCompanyDragLeave(card) { card.classList.remove('drag-target'); }
+  function _onCompanyDrop(e, targetId) {
+    e.preventDefault();
+    document.querySelectorAll('.company-card').forEach(c => c.classList.remove('drag-target'));
+    if (_dragSrcId === null || _dragSrcId === targetId) return;
+    const srcIdx = state.companies.findIndex(c => c.id === _dragSrcId);
+    const tgtIdx = state.companies.findIndex(c => c.id === targetId);
+    if (srcIdx === -1 || tgtIdx === -1) return;
+    const [moved] = state.companies.splice(srcIdx, 1);
+    state.companies.splice(tgtIdx, 0, moved);
+    state.companiesSortMode = 'custom';
+    if (isEditing) _saveAllCompanies();
+    renderCompanies();
+  }
 
   window.onload = () => init().catch(console.error);
 </script>
