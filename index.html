@@ -596,10 +596,12 @@
     try {
       const [{ data: cfg, error: e1 }, { data: cos, error: e2 }, { data: mtg, error: e3 }] = await Promise.all([
         db.from('config').select('*').eq('id', 1).maybeSingle(),
-        db.from('companies').select('*').order('sort_order').order('id'),
+        db.from('companies').select('*').order('sort_order', { ascending: true }),
         db.from('meetings').select('*').order('date')
       ]);
-      if (e1 || e2 || e3) throw (e1 || e2 || e3);
+      if (e1) { console.error('Error config:', e1); throw e1; }
+      if (e2) { console.error('Error companies:', e2); throw e2; }
+      if (e3) { console.error('Error meetings:', e3); throw e3; }
       if (cfg) {
         state.groupName        = cfg.group_name;
         state.cadenceDays      = cfg.cadence_days;
