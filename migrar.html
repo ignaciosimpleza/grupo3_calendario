@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Migrar datos a Turso</title>
+<style>
+  body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background:#F9F4ED; color:#1A1D1E; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card { background:#fff; border:1px solid #E2DDD8; border-radius:18px; padding:32px; max-width:440px; width:100%; box-shadow:0 8px 30px rgba(0,0,0,.07); }
+  h1 { font-size:1.3rem; margin:0 0 6px; }
+  p.sub { color:#7F8C8C; font-size:.9rem; margin:0 0 22px; line-height:1.5; }
+  label { display:block; font-size:.8rem; font-weight:700; margin-bottom:6px; }
+  input { width:100%; box-sizing:border-box; padding:12px 14px; border:1px solid #E2DDD8; border-radius:10px; font-size:1rem; }
+  button { width:100%; margin-top:18px; padding:14px; border:none; border-radius:10px; background:#32E8A9; color:#151818; font-weight:800; font-size:1rem; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .result { margin-top:20px; padding:16px; border-radius:10px; font-size:.9rem; line-height:1.5; display:none; }
+  .ok { background:#E8FDF5; border:1px solid #32E8A9; }
+  .err { background:#FBEAE8; border:1px solid #CD6155; color:#8a3128; }
+  .spin { display:inline-block; width:16px; height:16px; border:2px solid #15181833; border-top-color:#151818; border-radius:50%; animation:s .7s linear infinite; vertical-align:-3px; margin-right:8px; }
+  @keyframes s { to { transform:rotate(360deg); } }
+  a { color:#00a070; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Copiar datos a Turso</h1>
+    <p class="sub">Esto copia tus empresas, reuniones y configuración desde Supabase hacia Turso. Es seguro: no borra nada y podés repetirlo sin duplicar datos.</p>
+    <label for="pwd">Contraseña del Modo Edición</label>
+    <input id="pwd" type="password" placeholder="••••••" onkeydown="if(event.key==='Enter') migrar()"/>
+    <button id="btn" onclick="migrar()">Copiar datos ahora</button>
+    <div id="result" class="result"></div>
+  </div>
+
+  <script>
+    async function migrar() {
+      var btn = document.getElementById('btn');
+      var out = document.getElementById('result');
+      var pwd = document.getElementById('pwd').value;
+      btn.disabled = true;
+      out.style.display = 'block';
+      out.className = 'result';
+      out.innerHTML = '<span class="spin"></span> Copiando datos, esperá unos segundos...';
+      try {
+        var res = await fetch('/api/migrate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-edit-password': pwd }
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || ('Error ' + res.status));
+        out.className = 'result ok';
+        out.innerHTML =
+          '<strong>✓ ¡Listo! Los datos están en Turso.</strong><br><br>' +
+          'Empresas: ' + data.enTurso.empresas + '<br>' +
+          'Reuniones: ' + data.enTurso.reuniones + '<br>' +
+          'Configuración: ' + data.enTurso.config + '<br><br>' +
+          'Ya podés <a href="/">abrir el calendario</a> y verificar que está todo.';
+      } catch (e) {
+        out.className = 'result err';
+        out.innerHTML = '<strong>No se pudo:</strong> ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
