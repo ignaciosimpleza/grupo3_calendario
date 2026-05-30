@@ -1,0 +1,13 @@
+{
+  "name": "grupo3-calendario",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gestión de Calendario - Simpleza (Turso + Vercel)",
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.4"
+  }
+}
