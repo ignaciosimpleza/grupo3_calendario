@@ -5,8 +5,7 @@
   "type": "module",
   "description": "Calendario del Grupo 3 — frontend estático + API serverless sobre Turso (libSQL)",
   "scripts": {
-    "schema": "node scripts/apply-schema.mjs",
-    "migrate": "node scripts/migrate.mjs"
+    "schema": "node scripts/apply-schema.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0"

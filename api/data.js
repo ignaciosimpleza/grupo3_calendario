@@ -1,12 +1,5 @@
 import { getClient, toBool, toInt, parseJsonArray } from '../lib/turso.js';
 
-// Credenciales públicas de Supabase (solo lectura, anon key) usadas para la
-// importación automática de datos la primera vez. Se pueden sobreescribir con
-// variables de entorno si hiciera falta.
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tfjezjmgulvolrifjpjh.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmamV6am1ndWx2b2xyaWZqcGpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3OTMxNTMsImV4cCI6MjA5MjM2OTE1M30.kM6TpNuErxItzT-oZDNF95C1UsELWDORFEWIKPAv_N0';
-
 // El esquema se crea solo (CREATE TABLE IF NOT EXISTS), así no hace falta correr
 // ningún script a mano: en el primer request las tablas quedan listas.
 const SCHEMA_STATEMENTS = [
@@ -29,7 +22,7 @@ async function ensureSchema(client) {
   _schemaReady = true;
 }
 
-// SQL de upsert (INSERT ... ON CONFLICT) equivalente a los .upsert() de Supabase.
+// SQL de upsert (INSERT ... ON CONFLICT): inserta o actualiza si ya existe.
 const UPSERT_CONFIG = `
   INSERT INTO config (id, group_name, cadence_days, novedades_ratio, tecnica_ratio, meeting_day_of_week)
   VALUES (?, ?, ?, ?, ?, ?)
@@ -69,45 +62,6 @@ const companyArgs = (co, i) => [
 const meetingArgs = (m) => [
   m.date, m.assignment, m.obs || '', m.topic || '', toInt(m.fixed),
 ];
-
-async function sbFetch(table, query = '') {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*${query}`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-  });
-  if (!res.ok) throw new Error(`Supabase ${table}: ${res.status}`);
-  return res.json();
-}
-
-// Importa los datos de Supabase a Turso una sola vez, si Turso está vacío.
-// Es "best-effort": si falla (p. ej. Supabase ya no existe), la app igual arranca.
-async function seedFromSupabaseIfEmpty(client) {
-  const counts = await client.execute(
-    'SELECT (SELECT COUNT(*) FROM config) AS c, (SELECT COUNT(*) FROM companies) AS co, (SELECT COUNT(*) FROM meetings) AS m'
-  );
-  const row = counts.rows[0];
-  if (Number(row.c) + Number(row.co) + Number(row.m) > 0) return; // ya hay datos
-
-  const [config, companies, meetings] = await Promise.all([
-    sbFetch('config'),
-    sbFetch('companies', '&order=sort_order.asc'),
-    sbFetch('meetings', '&order=date.asc'),
-  ]);
-
-  const stmts = [];
-  for (const c of config) {
-    stmts.push({ sql: UPSERT_CONFIG, args: [1, c.group_name, c.cadence_days, c.novedades_ratio, c.tecnica_ratio, c.meeting_day_of_week] });
-  }
-  companies.forEach((c, i) => stmts.push({
-    sql: UPSERT_COMPANY,
-    args: [c.id, c.name, c.color, toInt(c.active), JSON.stringify(Array.isArray(c.matrix) ? c.matrix : JSON.parse(c.matrix || '[]')), JSON.stringify(Array.isArray(c.reps) ? c.reps : JSON.parse(c.reps || '[]')), c.sort_order ?? i],
-  }));
-  for (const m of meetings) {
-    stmts.push({ sql: UPSERT_MEETING, args: [m.date, m.assignment, m.obs || '', m.topic || '', toInt(m.fixed)] });
-  }
-  for (let i = 0; i < stmts.length; i += 100) {
-    await client.batch(stmts.slice(i, i + 100), 'write');
-  }
-}
 
 async function loadAll(client) {
   const [cfg, cos, mtg] = await Promise.all([
@@ -164,9 +118,6 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       await ensureSchema(client);
-      // Importación automática (una sola vez) desde Supabase. Nunca rompe la carga.
-      try { await seedFromSupabaseIfEmpty(client); }
-      catch (e) { console.warn('Seed automático omitido:', e.message); }
       res.status(200).json(await loadAll(client));
     } catch (e) {
       res.status(500).json({ error: String(e.message || e) });

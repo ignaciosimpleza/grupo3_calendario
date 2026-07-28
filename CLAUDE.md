@@ -3,7 +3,8 @@
 ## Qué es
 Calendario del Grupo 3. Es **un solo `index.html`** estático (Tailwind por CDN)
 servido por **Vercel**. La base de datos está en **Turso** (libSQL), detrás de una
-función serverless en `api/data.js`. Antes usaba Supabase (migrado).
+función serverless en `api/data.js`. Antes usaba Supabase; ya está **totalmente
+desconectado** (el código no lo toca más).
 
 Sitio: https://grupo3-calendario.vercel.app/
 
@@ -13,10 +14,10 @@ index.html  ──fetch /api/data──►  api/data.js (Vercel Function)  ─�
 ```
 - `api/data.js`: `GET` carga config/companies/meetings; `POST` escribe (valida
   `EDIT_PASSWORD` del lado del servidor). Crea las tablas solo
-  (`CREATE TABLE IF NOT EXISTS`) e importa de Supabase la primera vez si Turso
-  está vacío. NO hace falta correr scripts a mano.
+  (`CREATE TABLE IF NOT EXISTS`). NO hace falta correr scripts a mano.
 - `lib/turso.js`: cliente libSQL + helpers.
-- `db/schema.sql`, `scripts/*.mjs`: respaldo manual (normalmente no se usan).
+- `db/schema.sql`, `scripts/apply-schema.mjs`: respaldo manual (normalmente no se usan).
+- La migración desde Supabase ya se hizo (julio 2026); los datos viven en Turso.
 
 ## Variables de entorno en Vercel (Settings → Environment Variables)
 - `TURSO_DATABASE_URL` (obligatoria)
