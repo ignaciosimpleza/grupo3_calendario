@@ -4,7 +4,6 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>Gestión de Calendario - Simpleza</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
@@ -552,14 +551,16 @@
 </div>
 
 <script>
-  // ======= SUPABASE CONFIG =======
-  // Reemplazar con tus credenciales de Supabase:
-  const SUPABASE_URL      = 'https://tfjezjmgulvolrifjpjh.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmamV6am1ndWx2b2xyaWZqcGpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3OTMxNTMsImV4cCI6MjA5MjM2OTE1M30.kM6TpNuErxItzT-oZDNF95C1UsELWDORFEWIKPAv_N0';
-  const EDIT_PASSWORD     = 'A1234b';
+  // ======= DATA / AUTH CONFIG =======
+  // La base de datos vive en Turso (libSQL) y se accede a través de una función
+  // serverless en Vercel (/api/data). El token de Turso NUNCA llega al navegador:
+  // queda en las variables de entorno TURSO_DATABASE_URL / TURSO_AUTH_TOKEN.
+  const API_URL = '/api/data';
 
-  const _dbConfigured = SUPABASE_URL.startsWith('https://') && SUPABASE_ANON_KEY.startsWith('eyJ');
-  const db = _dbConfigured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+  // Contraseña para habilitar el modo edición. Se usa para desbloquear la UI y
+  // se envía en cada escritura; el servidor la valida de nuevo contra la variable
+  // de entorno EDIT_PASSWORD (la validación real es del lado del servidor).
+  const EDIT_PASSWORD = 'A1234b';
 
   let isEditing = false;
 
@@ -645,20 +646,14 @@
     }
   }
 
-  // ======= SUPABASE LOAD =======
-  async function loadFromSupabase() {
-    if (!db) { setDbStatus('offline', 'Supabase no configurado'); return false; }
+  // ======= LOAD (Turso vía API) =======
+  async function loadFromDb() {
     setDbStatus('connecting');
     showLoading(true);
     try {
-      const [{ data: cfg, error: e1 }, { data: cos, error: e2 }, { data: mtg, error: e3 }] = await Promise.all([
-        db.from('config').select('*').eq('id', 1).maybeSingle(),
-        db.from('companies').select('*').order('sort_order', { ascending: true }),
-        db.from('meetings').select('*').order('date')
-      ]);
-      if (e1) { console.error('Error config:', e1); throw e1; }
-      if (e2) { console.error('Error companies:', e2); throw e2; }
-      if (e3) { console.error('Error meetings:', e3); throw e3; }
+      const res = await fetch(API_URL);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const { config: cfg, companies: cos, meetings: mtg } = await res.json();
       if (cfg) {
         state.groupName        = cfg.group_name;
         state.cadenceDays      = cfg.cadence_days;
@@ -682,7 +677,7 @@
       setDbStatus('ok');
       return true;
     } catch(e) {
-      console.error('Supabase load error:', e);
+      console.error('Load error:', e);
       setDbStatus('offline', 'Sin conexión ✗');
       return false;
     } finally {
@@ -690,70 +685,72 @@
     }
   }
 
-  // Wrapper genérico que actualiza el status en cada operación de escritura
-  async function _dbRun(fn) {
-    if (!db || !isEditing) return;
+  // Wrapper genérico de escritura: postea a la API y actualiza el status.
+  async function _dbRun(action, payload) {
+    if (!isEditing) return;
     setDbStatus('saving');
     try {
-      const { error } = await fn();
-      if (error) throw error;
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, password: EDIT_PASSWORD, payload })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       setDbStatus('ok');
     } catch(e) {
-      console.error('Supabase save error:', e);
+      console.error('Save error:', e);
       setDbStatus('error', 'Error al guardar ✗');
     }
   }
 
-  // ======= SUPABASE SAVE =======
+  // ======= SAVE (Turso vía API) =======
   async function _saveMeeting(dateStr) {
-    if (!db || !isEditing) return;
+    if (!isEditing) return;
     const m = state.meetings.find(m => m.date === dateStr);
     if (!m) return;
-    await _dbRun(() => db.from('meetings').upsert({ date: m.date, assignment: m.assignment, obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed }));
+    await _dbRun('saveMeeting', { date: m.date, assignment: m.assignment, obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed });
   }
 
   async function _saveAllMeetings() {
-    if (!db || !isEditing) return;
+    if (!isEditing) return;
     const rows = state.meetings.map(m => ({ date: m.date, assignment: m.assignment, obs: m.obs || '', topic: m.topic || '', fixed: !!m.fixed }));
-    for (let i = 0; i < rows.length; i += 100) {
-      await _dbRun(() => db.from('meetings').upsert(rows.slice(i, i + 100)));
-    }
+    await _dbRun('saveAllMeetings', rows);
   }
 
   async function _deleteAllMeetings() {
-    if (!db || !isEditing) return;
-    await _dbRun(() => db.from('meetings').delete().gte('date', '2000-01-01'));
+    if (!isEditing) return;
+    await _dbRun('deleteAllMeetings');
   }
 
   async function _saveCompany(coId) {
-    if (!db || !isEditing) return;
+    if (!isEditing) return;
     const co = state.companies.find(c => c.id === coId);
     if (!co) return;
-    await _dbRun(() => db.from('companies').upsert({
+    await _dbRun('saveCompany', {
       id: co.id, name: co.name, color: co.color, active: co.active,
       matrix: co.matrix, reps: co.reps,
       sort_order: state.companies.indexOf(co)
-    }));
+    });
   }
 
   async function _saveAllCompanies() {
-    if (!db || !isEditing) return;
+    if (!isEditing) return;
     const rows = state.companies.map((co, i) => ({ id: co.id, name: co.name, color: co.color, active: co.active, matrix: co.matrix, reps: co.reps, sort_order: i }));
-    await _dbRun(() => db.from('companies').upsert(rows));
+    await _dbRun('saveAllCompanies', rows);
   }
 
   async function _deleteCompany(coId) {
-    if (!db || !isEditing) return;
-    await _dbRun(() => db.from('companies').delete().eq('id', coId));
+    if (!isEditing) return;
+    await _dbRun('deleteCompany', { id: coId });
   }
 
   async function _saveConfig() {
-    if (!db || !isEditing) return;
-    await _dbRun(() => db.from('config').upsert({
-      id: 1, group_name: state.groupName, cadence_days: state.cadenceDays,
+    if (!isEditing) return;
+    await _dbRun('saveConfig', {
+      group_name: state.groupName, cadence_days: state.cadenceDays,
       novedades_ratio: state.novedadesRatio, tecnica_ratio: state.tecnicaRatio,
       meeting_day_of_week: state.meetingDayOfWeek
-    }));
+    });
   }
 
   // ======= LOGIN / EDIT MODE =======
@@ -865,11 +862,11 @@
     document.getElementById('system-date-display').textContent =
       SYSTEM_DATE.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    const loaded = await loadFromSupabase();
+    const loaded = await loadFromDb();
 
-    if (!loaded && !_dbConfigured) {
-      // No Supabase configured — run with empty state and show warning
-      console.warn('Supabase no configurado. Editá SUPABASE_URL y SUPABASE_ANON_KEY en el HTML.');
+    if (!loaded) {
+      // No se pudo cargar — corre con estado vacío y muestra aviso
+      console.warn('No se pudo cargar la base. Verificá que /api/data y las variables de entorno de Turso (TURSO_DATABASE_URL / TURSO_AUTH_TOKEN) estén configuradas en Vercel.');
     }
 
     // Generate future meetings if needed
